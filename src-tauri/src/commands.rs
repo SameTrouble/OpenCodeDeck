@@ -31,7 +31,7 @@ fn parse_target(target: &str) -> AppResult<ProcessTarget> {
 }
 
 #[tauri::command]
-pub fn start_process(target: String, state: State<'_, AppState>) -> AppResult<ProcessState> {
+pub async fn start_process(target: String, state: State<'_, AppState>) -> AppResult<ProcessState> {
     let target = parse_target(&target)?;
     let cfg = state.load_config()?;
     match target {
@@ -39,7 +39,7 @@ pub fn start_process(target: String, state: State<'_, AppState>) -> AppResult<Pr
         ProcessTarget::Bridge => {
             let installer = BridgeInstaller::new(state.config_store.bridge_install_path(&cfg));
             if !installer.is_installed() {
-                installer.install()?;
+                installer.install().await?;
             }
             renderer::write_bridge_files(&cfg, installer.path())?;
             let deps = bridge_check_deps();
@@ -63,12 +63,12 @@ pub async fn restart_process(target: String, state: State<'_, AppState>) -> AppR
     state.process_manager.restart_async(target, &cfg, &bridge_dir, deps.bun).await
 }
 
-pub fn do_start_all(state: &AppState) -> AppResult<()> {
+pub async fn do_start_all(state: &AppState) -> AppResult<()> {
     let cfg = state.load_config()?;
     state.process_manager.start_server(cfg.server.port, &cfg.server.cwd, &cfg.server.extra_env)?;
     let installer = BridgeInstaller::new(state.config_store.bridge_install_path(&cfg));
     if !installer.is_installed() {
-        installer.install()?;
+        installer.install().await?;
     }
     renderer::write_bridge_files(&cfg, installer.path())?;
     let deps = bridge_check_deps();
@@ -84,11 +84,11 @@ pub async fn do_stop_all(state: &AppState) -> AppResult<()> {
 
 pub async fn do_restart_all(state: &AppState) -> AppResult<()> {
     do_stop_all(state).await?;
-    do_start_all(state)
+    do_start_all(state).await
 }
 
 #[tauri::command]
-pub fn start_all(state: State<'_, AppState>) -> AppResult<()> { do_start_all(state.inner()) }
+pub async fn start_all(state: State<'_, AppState>) -> AppResult<()> { do_start_all(state.inner()).await }
 
 #[tauri::command]
 pub async fn stop_all(state: State<'_, AppState>) -> AppResult<()> { do_stop_all(state.inner()).await }
@@ -107,24 +107,24 @@ pub fn save_config(config: AppConfig, state: State<'_, AppState>) -> AppResult<(
 }
 
 #[tauri::command]
-pub fn check_bridge_update(state: State<'_, AppState>) -> AppResult<bool> {
+pub async fn check_bridge_update(state: State<'_, AppState>) -> AppResult<bool> {
     let cfg = state.load_config()?;
     let installer = BridgeInstaller::new(state.config_store.bridge_install_path(&cfg));
-    installer.check_update()
+    installer.check_update().await
 }
 
 #[tauri::command]
-pub fn update_bridge(state: State<'_, AppState>) -> AppResult<()> {
+pub async fn update_bridge(state: State<'_, AppState>) -> AppResult<()> {
     let cfg = state.load_config()?;
     let installer = BridgeInstaller::new(state.config_store.bridge_install_path(&cfg));
-    installer.update()
+    installer.update().await
 }
 
 #[tauri::command]
-pub fn reinstall_bridge(state: State<'_, AppState>) -> AppResult<()> {
+pub async fn reinstall_bridge(state: State<'_, AppState>) -> AppResult<()> {
     let cfg = state.load_config()?;
     let installer = BridgeInstaller::new(state.config_store.bridge_install_path(&cfg));
-    installer.reinstall()
+    installer.reinstall().await
 }
 
 #[tauri::command]

@@ -101,8 +101,11 @@ pub fn run() {
                         app.exit(0);
                     }
                     "start_all" => {
-                        let state = app.state::<state::AppState>();
-                        let _ = commands::do_start_all(state.inner());
+                        let handle = app.clone();
+                        tauri::async_runtime::spawn(async move {
+                            let state = handle.state::<state::AppState>();
+                            let _ = commands::do_start_all(state.inner()).await;
+                        });
                     }
                     "stop_all" => {
                         let handle = app.clone();
