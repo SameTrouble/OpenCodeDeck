@@ -1,6 +1,0 @@
- .superpowers/sdd/briefs/task-8-report.md |  26 +++
- src-tauri/src/lib.rs                     |   1 +
- src-tauri/src/process/manager.rs         | 273 +++++++++++++++++++++++++++++++
- src-tauri/src/process/mod.rs             |   4 +
- src-tauri/src/process/supervisor.rs      | 148 +++++++++++++++++
- 5 files changed, 452 insertions(+)
