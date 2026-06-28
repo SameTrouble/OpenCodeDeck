@@ -105,12 +105,18 @@ pub fn run() {
                         let _ = commands::do_start_all(state.inner());
                     }
                     "stop_all" => {
-                        let state = app.state::<state::AppState>();
-                        let _ = commands::do_stop_all(state.inner());
+                        let handle = app.clone();
+                        tauri::async_runtime::spawn(async move {
+                            let state = handle.state::<state::AppState>();
+                            let _ = commands::do_stop_all(state.inner()).await;
+                        });
                     }
                     "restart_all" => {
-                        let state = app.state::<state::AppState>();
-                        let _ = commands::do_restart_all(state.inner());
+                        let handle = app.clone();
+                        tauri::async_runtime::spawn(async move {
+                            let state = handle.state::<state::AppState>();
+                            let _ = commands::do_restart_all(state.inner()).await;
+                        });
                     }
                     _ => {}
                 })

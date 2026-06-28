@@ -49,17 +49,17 @@ pub fn start_process(target: String, state: State<'_, AppState>) -> AppResult<Pr
 }
 
 #[tauri::command]
-pub fn stop_process(target: String, state: State<'_, AppState>) -> AppResult<()> {
+pub async fn stop_process(target: String, state: State<'_, AppState>) -> AppResult<()> {
     let target = parse_target(&target)?;
-    state.process_manager.stop(target)
+    state.process_manager.stop_async(target).await
 }
 
 #[tauri::command]
-pub fn restart_process(target: String, state: State<'_, AppState>) -> AppResult<ProcessState> {
+pub async fn restart_process(target: String, state: State<'_, AppState>) -> AppResult<ProcessState> {
     let target = parse_target(&target)?;
     let cfg = state.load_config()?;
     let deps = bridge_check_deps();
-    state.process_manager.restart(target, &cfg, deps.bun)
+    state.process_manager.restart_async(target, &cfg, deps.bun).await
 }
 
 pub fn do_start_all(state: &AppState) -> AppResult<()> {
@@ -75,14 +75,14 @@ pub fn do_start_all(state: &AppState) -> AppResult<()> {
     Ok(())
 }
 
-pub fn do_stop_all(state: &AppState) -> AppResult<()> {
-    state.process_manager.stop(ProcessTarget::Bridge)?;
-    state.process_manager.stop(ProcessTarget::Server)?;
+pub async fn do_stop_all(state: &AppState) -> AppResult<()> {
+    state.process_manager.stop_async(ProcessTarget::Bridge).await?;
+    state.process_manager.stop_async(ProcessTarget::Server).await?;
     Ok(())
 }
 
-pub fn do_restart_all(state: &AppState) -> AppResult<()> {
-    do_stop_all(state)?;
+pub async fn do_restart_all(state: &AppState) -> AppResult<()> {
+    do_stop_all(state).await?;
     do_start_all(state)
 }
 
@@ -90,10 +90,10 @@ pub fn do_restart_all(state: &AppState) -> AppResult<()> {
 pub fn start_all(state: State<'_, AppState>) -> AppResult<()> { do_start_all(state.inner()) }
 
 #[tauri::command]
-pub fn stop_all(state: State<'_, AppState>) -> AppResult<()> { do_stop_all(state.inner()) }
+pub async fn stop_all(state: State<'_, AppState>) -> AppResult<()> { do_stop_all(state.inner()).await }
 
 #[tauri::command]
-pub fn restart_all(state: State<'_, AppState>) -> AppResult<()> { do_restart_all(state.inner()) }
+pub async fn restart_all(state: State<'_, AppState>) -> AppResult<()> { do_restart_all(state.inner()).await }
 
 #[tauri::command]
 pub fn get_config(state: State<'_, AppState>) -> AppResult<AppConfig> {
