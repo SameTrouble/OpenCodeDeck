@@ -15,7 +15,6 @@ pub struct AppConfig {
 #[serde(rename_all = "camelCase")]
 pub struct ServerConfig {
     pub port: u16,
-    pub opencode_server_url: String,
     pub cwd: String,
     #[serde(default)]
     pub extra_env: std::collections::HashMap<String, String>,
@@ -190,7 +189,6 @@ impl ConfigStore {
             version: 1,
             server: ServerConfig {
                 port: 4097,
-                opencode_server_url: "http://127.0.0.1:4097".to_string(),
                 cwd: dirs::home_dir().map(|p| p.to_string_lossy().to_string()).unwrap_or_default(),
                 extra_env: Default::default(),
             },

@@ -18,7 +18,6 @@ export type ProcessTarget = "server" | "bridge"
 
 export interface ServerConfig {
   port: number
-  opencodeServerUrl: string
   cwd: string
   extraEnv: Record<string, string>
 }

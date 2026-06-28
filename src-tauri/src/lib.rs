@@ -73,7 +73,8 @@ pub fn run() {
                     if v != last_version || checker.is_none() {
                         last_version = v;
                         let cfg = state.load_config().unwrap_or_else(|_| config::ConfigStore::default_config());
-                        checker = Some(monitor::health::HealthChecker::new(&cfg.server.opencode_server_url));
+                        let server_url = format!("http://127.0.0.1:{}", cfg.server.port);
+                        checker = Some(monitor::health::HealthChecker::new(&server_url));
                     }
                     let healthy = match &checker {
                         Some(c) => c.check_once().await,

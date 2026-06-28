@@ -28,11 +28,6 @@ export function Config() {
               onChange={(e) => setConfig({ ...config, server: { ...config.server, port: Number(e.target.value) } })} />
           </div>
           <div className="space-y-1">
-            <Label>opencodeServerUrl</Label>
-            <Input value={config.server.opencodeServerUrl}
-              onChange={(e) => setConfig({ ...config, server: { ...config.server, opencodeServerUrl: e.target.value } })} />
-          </div>
-          <div className="space-y-1">
             <Label>工作目录 (cwd)</Label>
             <Input value={config.server.cwd}
               onChange={(e) => setConfig({ ...config, server: { ...config.server, cwd: e.target.value } })} />

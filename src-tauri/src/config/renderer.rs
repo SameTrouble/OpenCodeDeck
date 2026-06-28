@@ -2,29 +2,10 @@ use std::path::Path;
 use crate::error::AppResult;
 use crate::config::store::AppConfig;
 
-/// Derive the server URL from the configured URL and port.
-///
-/// The bridge connects to `OPENCODE_SERVER_URL`, while OpenCodeDeck starts
-/// `opencode serve --port <port>`. If these two disagree (e.g. the user
-/// changed the port but not the URL), the bridge POSTs to one instance but
-/// subscribes to SSE on another, so replies never arrive.
-///
-/// We keep the scheme and host from `opencode_server_url` but always
-/// substitute `port`, guaranteeing the bridge and the launched server agree.
-fn derive_server_url(configured_url: &str, port: u16) -> String {
-    if let Some((scheme, rest)) = configured_url.split_once("://") {
-        let after_host = rest.find(['/', ':']).map(|i| &rest[i..]).unwrap_or("");
-        let host_end = after_host.len();
-        let host = &rest[..rest.len() - host_end];
-        return format!("{}://{}:{}", scheme, host, port);
-    }
-    format!("http://127.0.0.1:{}", port)
-}
-
 pub fn render_env(config: &AppConfig) -> String {
     let mut lines = Vec::new();
 
-    let server_url = derive_server_url(&config.server.opencode_server_url, config.server.port);
+    let server_url = format!("http://127.0.0.1:{}", config.server.port);
     lines.push(format!("OPENCODE_SERVER_URL={}", server_url));
     if !config.server.cwd.is_empty() {
         lines.push(format!("OPENCODE_CWD={}", config.server.cwd));
@@ -179,24 +160,10 @@ mod tests {
     fn render_env_server_url_derived_from_port() {
         let mut cfg = ConfigStore::default_config();
         cfg.server.port = 4092;
-        cfg.server.opencode_server_url = "http://127.0.0.1:4097".to_string();
         let env = render_env(&cfg);
         assert!(
             env.contains("OPENCODE_SERVER_URL=http://127.0.0.1:4092"),
             "OPENCODE_SERVER_URL must be derived from port, got: {}",
-            env
-        );
-    }
-
-    #[test]
-    fn render_env_server_url_preserves_custom_host() {
-        let mut cfg = ConfigStore::default_config();
-        cfg.server.port = 4092;
-        cfg.server.opencode_server_url = "http://opencode.local:4097".to_string();
-        let env = render_env(&cfg);
-        assert!(
-            env.contains("OPENCODE_SERVER_URL=http://opencode.local:4092"),
-            "custom host should be preserved with derived port, got: {}",
             env
         );
     }
