@@ -27,4 +27,10 @@ impl From<serde_json::Error> for AppError {
     }
 }
 
+impl From<which::Error> for AppError {
+    fn from(e: which::Error) -> Self {
+        AppError::EnvNotFound(e.to_string())
+    }
+}
+
 pub type AppResult<T> = Result<T, AppError>;
