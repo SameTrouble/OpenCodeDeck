@@ -95,8 +95,10 @@ pub fn run() {
                 &start_all_item, &stop_all_item, &restart_all_item, &sep, &show_item, &sep, &quit_item,
             ])?;
 
+            let tray_icon = tauri::image::Image::from_bytes(include_bytes!("../icons/tray-icon.png")).unwrap();
             let _tray = TrayIconBuilder::new()
-                .icon(app.default_window_icon().unwrap().clone())
+                .icon(tray_icon)
+                .icon_as_template(true)
                 .menu(&menu)
                 .tooltip("OpenCodeDeck")
                 .on_menu_event(|app, event| match event.id.as_ref() {

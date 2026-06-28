@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <!-- Template tray icon: single solid shape with alpha. macOS auto-inverts. -->
+  <!-- Card body -->
+  <rect x="10" y="14" width="44" height="36" rx="5" fill="none" stroke="#000" stroke-width="3.5"/>
+  <!-- Terminal prompt chevron > and underscore _ as a single glyph path -->
+  <path d="M18 26 L25 31 L18 36" fill="none" stroke="#000" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="29" y="34" width="14" height="3" rx="1.5" fill="#000"/>
+</svg>
