@@ -66,4 +66,4 @@ After restoring the fix, that error no longer occurs (CSS transforms cleanly).
 ```
 fix: migrate Tailwind config from v3 to v4 style
 ```
-Commit hash: <filled in below after commit>
+Commit hash: e863f40339bdc69655a75d0161e191d0a9a06120

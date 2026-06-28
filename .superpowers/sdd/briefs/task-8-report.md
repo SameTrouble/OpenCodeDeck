@@ -23,4 +23,4 @@
 `cargo check --manifest-path src-tauri/Cargo.toml` → finished with no errors and no warnings.
 
 ## Commit
-`<hash>` — `feat(process): add ProcessManager and supervisor with stdout/stderr streaming`
+`80a990c` — `feat(process): add ProcessManager and supervisor with stdout/stderr streaming`

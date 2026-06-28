@@ -1,0 +1,14 @@
+# OpenCodeDeck SDD Progress Ledger
+
+Task 1: complete (commits fc056cc..6b646d3, review clean)
+Task 2: complete (commits 6b646d3..be4741a, review clean)
+Task 3: complete (commits be4741a..5153455, review clean)
+Task 4: complete (commits 5153455..2c61511, review clean, 4 tests pass)
+Task 5: complete (commits 2c61511..11e2309, review clean, 3 tests pass)
+Task 6: complete (commits 11e2309..50c6bea, review clean, 4 tests pass)
+Task 7: complete (commits 50c6bea..776477c, review clean)
+Task 8: complete (commits 776477c..80a990c, review clean, note: start_kill uses SIGKILL not SIGTERM — deferred to final review)
+Task 9: complete (commits 80a990c..6bb2a78, review clean)
+Task 10: complete (commits 6bb2a78..f3d25db, review clean)
+Task 11: complete (commits f3d25db..655e1c2, review clean)
+Task 12: complete (commits 655e1c2..676985b, review clean)

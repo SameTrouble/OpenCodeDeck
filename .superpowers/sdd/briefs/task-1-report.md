@@ -89,4 +89,6 @@ git commit -m "chore: scaffold Tauri v2 + React + Tailwind project"
 
 ## Final commit hash
 
-(To be filled after commit is created.)
+`bf30b2511278a9ad3d6e2b62c42bc6e837ece3b1`
+
+Commit message: `chore: scaffold Tauri v2 + React + Tailwind project`
