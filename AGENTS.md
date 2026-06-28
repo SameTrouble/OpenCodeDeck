@@ -35,3 +35,28 @@ Tauri 事件（由 Rust 发射，TS 通过 `useTauriEvent` 监听）：`state://
 - `ConfigStore::load` 会将损坏的 `config.json` 备份为 `config.json.corrupt-<ts>` 并重写默认值 —— 依赖此机制，不要额外加 fallback 路径。
 - 部分 `cargo test` 测试调用 `std::mem::forget(pm)` 跳过运行时清理 —— 有意为之，不是要修复的泄漏。
 - `AppError` 为 `#[serde(tag = "kind", content = "message")]`；`kind` 字符串（如 `"Process"`、`"EnvNotFound"`）是 TS `AppError` 联合类型 switch 的依据。
+
+## CI / GitHub Actions
+
+工作流定义在 `.github/workflows/build.yml`，覆盖 ubuntu-24.04(x64)、macos-13(x64)、macos-14(arm64)。
+
+- **push/PR** → 仅构建验证（3 个 job 并行）。
+- **push `v*` tag** → 构建 + macOS 签名公证 + 上传到 GitHub Release。
+- Ubuntu 产出 `*.AppImage`，macOS 产出 `*.dmg`。
+
+### macOS 签名 Secrets
+
+仅在 tag 触发时注入（push/PR 不签名）。未配置时 macOS 仍能构建，产出未签名 `.dmg`。
+
+| Secret | 用途 |
+|--------|------|
+| `APPLE_CERTIFICATE` | Developer ID Application `.p12` 的 base64 |
+| `APPLE_CERTIFICATE_PASSWORD` | `.p12` 导出密码 |
+| `APPLE_ID` | Apple ID 邮箱（公证用） |
+| `APPLE_PASSWORD` | App 专用密码（appleid.apple.com 生成） |
+| `APPLE_TEAM_ID` | 10 位团队 ID |
+| `APPLE_SIGNING_IDENTITY` | 证书 CN，如 `Developer ID Application: Name (TEAMID)` |
+
+### 权限要求
+
+仓库 Settings → Actions → General → Workflow permissions 需设为 **Read and write permissions**（`GITHUB_TOKEN` 需要 `contents: write` 来创建 Release）。
