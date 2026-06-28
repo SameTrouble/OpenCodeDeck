@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { getConfig, saveConfig, checkBridgeUpdate, updateBridge, reinstallBridge, checkDeps } from "@/lib/tauri"
 import type { AppConfig, DepStatus } from "@/lib/types"
 import { toast } from "sonner"
+import { formatError } from "@/lib/utils"
 
 export function Bridge() {
   const [config, setConfig] = useState<AppConfig | null>(null)
@@ -19,7 +20,7 @@ export function Bridge() {
 
   if (!config) return <div>加载中...</div>
 
-  const save = () => saveConfig(config).then(() => toast.success("已保存")).catch(() => toast.error("保存失败"))
+  const save = () => saveConfig(config).then(() => toast.success("已保存")).catch((e) => toast.error(`保存失败: ${formatError(e)}`))
 
   return (
     <div className="space-y-4">
@@ -52,9 +53,9 @@ export function Bridge() {
         </CardContent>
       </Card>
       <div className="flex gap-2">
-        <Button variant="outline" onClick={() => checkBridgeUpdate().then((u) => toast.info(u ? "已是最新" : "有更新可用")).catch(() => toast.error("检查失败"))}>检查更新</Button>
-        <Button variant="outline" onClick={() => updateBridge().then(() => toast.success("已更新")).catch(() => toast.error("更新失败"))}>更新</Button>
-        <Button variant="outline" onClick={() => reinstallBridge().then(() => toast.success("已重装")).catch(() => toast.error("重装失败"))}>重新安装</Button>
+        <Button variant="outline" onClick={() => checkBridgeUpdate().then((u) => toast.info(u ? "已是最新" : "有更新可用")).catch((e) => toast.error(`检查失败: ${formatError(e)}`))}>检查更新</Button>
+        <Button variant="outline" onClick={() => updateBridge().then(() => toast.success("已更新")).catch((e) => toast.error(`更新失败: ${formatError(e)}`))}>更新</Button>
+        <Button variant="outline" onClick={() => reinstallBridge().then(() => toast.success("已重装")).catch((e) => toast.error(`重装失败: ${formatError(e)}`))}>重新安装</Button>
       </div>
       <Button onClick={save}>保存</Button>
     </div>

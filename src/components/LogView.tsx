@@ -6,6 +6,7 @@ import { useTauriEvent } from "@/hooks/useTauriEvent"
 import { getLogHistory, clearLogs, exportLogs } from "@/lib/tauri"
 import type { LogEntry } from "@/lib/types"
 import { toast } from "sonner"
+import { formatError } from "@/lib/utils"
 
 export function LogView({ height = "400px" }: { height?: string }) {
   const [entries, setEntries] = useState<LogEntry[]>([])
@@ -14,7 +15,7 @@ export function LogView({ height = "400px" }: { height?: string }) {
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    getLogHistory("all", 500).then(setEntries).catch(() => {})
+    getLogHistory("all", 500).then(setEntries).catch((e) => console.error("[load log history]", e))
   }, [])
 
   useTauriEvent<LogEntry>("log://entry", (entry) => {
@@ -34,11 +35,11 @@ export function LogView({ height = "400px" }: { height?: string }) {
   const handleClear = () => {
     clearLogs(activeTab).then(() => {
       setEntries((prev) => activeTab === "all" ? [] : prev.filter((e) => e.source !== activeTab))
-    }).catch(() => toast.error("清空失败"))
+    }).catch((e) => toast.error(`清空失败: ${formatError(e)}`))
   }
 
   const handleExport = () => {
-    exportLogs(activeTab).then((path) => toast.success(`已导出到: ${path}`)).catch(() => toast.error("导出失败"))
+    exportLogs(activeTab).then((path) => toast.success(`已导出到: ${path}`)).catch((e) => toast.error(`导出失败: ${formatError(e)}`))
   }
 
   return (

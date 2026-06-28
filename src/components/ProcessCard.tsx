@@ -5,6 +5,7 @@ import { Play, Square, RotateCcw } from "lucide-react"
 import type { ProcessState, ProcessTarget } from "@/lib/types"
 import { startProcess, stopProcess, restartProcess } from "@/lib/tauri"
 import { toast } from "sonner"
+import { formatError } from "@/lib/utils"
 
 const stateColor: Record<string, string> = {
   Running: "bg-green-500",
@@ -19,9 +20,9 @@ export function ProcessCard({ target, state }: { target: ProcessTarget; state: P
   const isRunning = state.state === "Running"
   const isBusy = state.state === "Starting" || state.state === "Stopping"
 
-  const handleStart = () => startProcess(target).catch((e) => toast.error(`启动失败: ${e}`))
-  const handleStop = () => stopProcess(target).catch((e) => toast.error(`停止失败: ${e}`))
-  const handleRestart = () => restartProcess(target).catch((e) => toast.error(`重启失败: ${e}`))
+  const handleStart = () => startProcess(target).catch((e) => toast.error(`启动失败: ${formatError(e)}`))
+  const handleStop = () => stopProcess(target).catch((e) => toast.error(`停止失败: ${formatError(e)}`))
+  const handleRestart = () => restartProcess(target).catch((e) => toast.error(`重启失败: ${formatError(e)}`))
 
   return (
     <Card>

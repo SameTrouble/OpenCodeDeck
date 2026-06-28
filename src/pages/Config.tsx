@@ -6,15 +6,16 @@ import { Label } from "@/components/ui/label"
 import { getConfig, saveConfig } from "@/lib/tauri"
 import type { AppConfig } from "@/lib/types"
 import { toast } from "sonner"
+import { formatError } from "@/lib/utils"
 
 export function Config() {
   const [config, setConfig] = useState<AppConfig | null>(null)
 
-  useEffect(() => { getConfig().then(setConfig).catch(() => toast.error("加载配置失败")) }, [])
+  useEffect(() => { getConfig().then(setConfig).catch((e) => toast.error(`加载配置失败: ${formatError(e)}`)) }, [])
 
   if (!config) return <div>加载中...</div>
 
-  const save = () => saveConfig(config).then(() => toast.success("已保存")).catch(() => toast.error("保存失败"))
+  const save = () => saveConfig(config).then(() => toast.success("已保存")).catch((e) => toast.error(`保存失败: ${formatError(e)}`))
 
   return (
     <div className="space-y-4">

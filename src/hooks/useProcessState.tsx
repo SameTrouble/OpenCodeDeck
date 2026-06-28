@@ -20,7 +20,9 @@ export function ProcessStateProvider({ children }: { children: ReactNode }) {
     setState((prev) => ({ ...prev, [target]: ps }))
   })
 
-  const refresh = useCallback(() => { getState().then(setState).catch(() => {}) }, [])
+  const refresh = useCallback(() => {
+    getState().then(setState).catch((e) => console.error("[refresh process state]", e))
+  }, [])
 
   return (
     <ProcessStateContext.Provider value={{ state, refresh }}>

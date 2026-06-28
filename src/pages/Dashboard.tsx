@@ -5,6 +5,7 @@ import { LogView } from "@/components/LogView"
 import { useProcessState } from "@/hooks/useProcessState"
 import { startAll, stopAll, restartAll } from "@/lib/tauri"
 import { toast } from "sonner"
+import { formatError } from "@/lib/utils"
 
 export function Dashboard() {
   const { state } = useProcessState()
@@ -12,9 +13,9 @@ export function Dashboard() {
   return (
     <div className="space-y-4">
       <div className="flex gap-2">
-        <Button onClick={() => startAll().catch((e) => toast.error(`启动失败: ${e}`))}>启动全部</Button>
-        <Button variant="outline" onClick={() => stopAll().catch((e) => toast.error(`停止失败: ${e}`))}>停止全部</Button>
-        <Button variant="outline" onClick={() => restartAll().catch((e) => toast.error(`重启失败: ${e}`))}>重启全部</Button>
+        <Button onClick={() => startAll().catch((e) => toast.error(`启动失败: ${formatError(e)}`))}>启动全部</Button>
+        <Button variant="outline" onClick={() => stopAll().catch((e) => toast.error(`停止失败: ${formatError(e)}`))}>停止全部</Button>
+        <Button variant="outline" onClick={() => restartAll().catch((e) => toast.error(`重启失败: ${formatError(e)}`))}>重启全部</Button>
       </div>
       <div className="grid grid-cols-2 gap-4">
         <ProcessCard target="server" state={state.server} />

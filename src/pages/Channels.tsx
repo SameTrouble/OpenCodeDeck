@@ -7,6 +7,7 @@ import { Switch } from "@/components/ui/switch"
 import { getConfig, saveConfig } from "@/lib/tauri"
 import type { AppConfig } from "@/lib/types"
 import { toast } from "sonner"
+import { formatError } from "@/lib/utils"
 
 export function Channels() {
   const [config, setConfig] = useState<AppConfig | null>(null)
@@ -16,7 +17,7 @@ export function Channels() {
   const update = (channel: keyof AppConfig["channels"], patch: Partial<AppConfig["channels"][keyof AppConfig["channels"]]>) =>
     setConfig({ ...config, channels: { ...config.channels, [channel]: { ...config.channels[channel], ...patch } } })
 
-  const save = () => saveConfig(config).then(() => toast.success("已保存")).catch(() => toast.error("保存失败"))
+  const save = () => saveConfig(config).then(() => toast.success("已保存")).catch((e) => toast.error(`保存失败: ${formatError(e)}`))
 
   return (
     <div className="space-y-4">
