@@ -246,6 +246,18 @@ impl ProcessManager {
                 mp.stopping = false;
             }
             self.emit_state(target);
+        } else {
+            {
+                let mut mp = crate::process::lock_or_recover(&mp_ref);
+                mp.state = ProcessState {
+                    state: ProcessStateKind::Stopped,
+                    pid: None, started_at: None, uptime_sec: None,
+                    exit_code: None, healthy: None,
+                };
+                mp.started_at_instant = None;
+                mp.stopping = false;
+            }
+            self.emit_state(target);
         }
         Ok(())
     }
