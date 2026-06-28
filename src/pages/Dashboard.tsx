@@ -1,4 +1,3 @@
-import { useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ProcessCard } from "@/components/ProcessCard"
@@ -8,9 +7,7 @@ import { startAll, stopAll, restartAll } from "@/lib/tauri"
 import { toast } from "sonner"
 
 export function Dashboard() {
-  const { state, refresh } = useProcessState()
-
-  useEffect(() => { refresh() }, [refresh])
+  const { state } = useProcessState()
 
   return (
     <div className="space-y-4">

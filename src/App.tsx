@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { LayoutDashboard, Cpu, Settings, Boxes, Radio, ScrollText } from "lucide-react"
 import { Dashboard } from "@/pages/Dashboard"
 import { Processes } from "@/pages/Processes"
@@ -8,6 +8,7 @@ import { Channels } from "@/pages/Channels"
 import { Logs } from "@/pages/Logs"
 import { WechatQrDialog } from "@/components/WechatQrDialog"
 import { Toaster } from "@/components/ui/sonner"
+import { ProcessStateProvider, useProcessState } from "@/hooks/useProcessState"
 import { cn } from "@/lib/utils"
 
 type Page = "dashboard" | "processes" | "config" | "bridge" | "channels" | "logs"
@@ -23,6 +24,18 @@ const navItems: { id: Page; label: string; icon: React.ReactNode }[] = [
 
 export default function App() {
   const [page, setPage] = useState<Page>("dashboard")
+
+  return (
+    <ProcessStateProvider>
+      <AppContent page={page} setPage={setPage} />
+    </ProcessStateProvider>
+  )
+}
+
+function AppContent({ page, setPage }: { page: Page; setPage: (p: Page) => void }) {
+  const { refresh } = useProcessState()
+
+  useEffect(() => { refresh() }, [refresh])
 
   return (
     <div className="flex h-screen">
