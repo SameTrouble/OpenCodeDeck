@@ -64,35 +64,36 @@ pub fn run() {
             let handle2 = handle.clone();
             tauri::async_runtime::spawn(async move {
                 let mut last_version: u64 = 0;
-                let mut checker: Option<monitor::health::HealthChecker> = None;
+                let mut checkers: std::collections::HashMap<String, monitor::health::HealthChecker> = std::collections::HashMap::new();
                 let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
                 loop {
                     interval.tick().await;
                     let state = handle2.state::<state::AppState>();
                     let server_states = state.process_manager.get_all_server_states();
-                    let (server_id, server_state) = match server_states.first() {
-                        Some((id, ps)) => (id.clone(), ps.clone()),
-                        None => continue,
-                    };
-                    if server_state.state != process::ProcessStateKind::Running {
-                        continue;
-                    }
                     let v = config_version.load(std::sync::atomic::Ordering::Relaxed);
-                    if v != last_version || checker.is_none() {
+                    if v != last_version {
                         last_version = v;
                         let cfg = state.load_config().unwrap_or_else(|_| config::ConfigStore::default_config());
-                        let server_url = cfg.servers.iter().find(|s| s.id == server_id)
-                            .or_else(|| cfg.servers.first())
-                            .map(|s| s.url.clone())
-                            .unwrap_or_default();
-                        checker = Some(monitor::health::HealthChecker::new(&server_url));
+                        checkers.clear();
+                        for s in &cfg.servers {
+                            checkers.insert(s.id.clone(), monitor::health::HealthChecker::new(&s.url));
+                        }
                     }
-                    let healthy = match &checker {
-                        Some(c) => c.check_once().await,
-                        None => false,
-                    };
-                    state.process_manager.set_health(process::ProcessTarget::Server, Some(server_id.clone()), healthy);
-                    let _ = handle2.emit("health://update", serde_json::json!({ "target": "server", "serverId": server_id, "healthy": healthy }));
+                    for (id, ps) in &server_states {
+                        if ps.state != process::ProcessStateKind::Running {
+                            continue;
+                        }
+                        let healthy = match checkers.get(id) {
+                            Some(c) => c.check_once().await,
+                            None => false,
+                        };
+                        state.process_manager.set_health(process::ProcessTarget::Server, Some(id.clone()), healthy);
+                        let _ = handle2.emit("health://update", serde_json::json!({
+                            "target": "server",
+                            "serverId": id,
+                            "healthy": healthy
+                        }));
+                    }
                 }
             });
 
@@ -101,13 +102,8 @@ pub fn run() {
 
             let quit_item = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
             let show_item = MenuItem::with_id(app, "show", "显示主窗口", true, None::<&str>)?;
-            let start_all_item = MenuItem::with_id(app, "start_all", "启动全部", true, None::<&str>)?;
-            let stop_all_item = MenuItem::with_id(app, "stop_all", "停止全部", true, None::<&str>)?;
-            let restart_all_item = MenuItem::with_id(app, "restart_all", "重启全部", true, None::<&str>)?;
             let sep = PredefinedMenuItem::separator(app)?;
-            let menu = Menu::with_items(app, &[
-                &start_all_item, &stop_all_item, &restart_all_item, &sep, &show_item, &sep, &quit_item,
-            ])?;
+            let menu = Menu::with_items(app, &[&show_item, &sep, &quit_item])?;
 
             let tray_icon = tauri::image::Image::from_bytes(include_bytes!("../icons/tray-icon.png")).unwrap();
             let _tray = TrayIconBuilder::new()
@@ -126,14 +122,11 @@ pub fn run() {
                         let handle = app.clone();
                         tauri::async_runtime::spawn(async move {
                             let state = handle.state::<state::AppState>();
-                            let _ = state.process_manager.stop_async(process::ProcessTarget::Bridge).await;
                             state.process_manager.stop_all_servers().await;
+                            let _ = state.process_manager.stop_async(process::ProcessTarget::Bridge).await;
                             handle.exit(0);
                         });
                     }
-                    "start_all" => {}
-                    "stop_all" => {}
-                    "restart_all" => {}
                     _ => {}
                 })
                 .on_tray_icon_event(|tray, event| {
