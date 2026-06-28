@@ -5,11 +5,13 @@ pub mod bridge;
 pub mod monitor;
 pub mod state;
 pub mod commands;
+pub mod env_path;
 
 use std::sync::{Arc, Mutex};
 use tauri::{Manager, Emitter};
 
 pub fn run() {
+    env_path::augment_path();
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
