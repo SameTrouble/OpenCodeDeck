@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use std::process::Command;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -12,15 +11,7 @@ pub struct DepStatus {
 }
 
 fn which(cmd: &str) -> bool {
-    let check = if cfg!(target_os = "windows") {
-        Command::new("where").arg(cmd).output()
-    } else {
-        Command::new("which").arg(cmd).output()
-    };
-    match check {
-        Ok(o) => o.status.success(),
-        Err(_) => false,
-    }
+    which::which(cmd).is_ok()
 }
 
 pub fn check_deps() -> DepStatus {

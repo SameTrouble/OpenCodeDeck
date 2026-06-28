@@ -104,7 +104,7 @@ impl ProcessManager {
         }
         self.emit_state(ProcessTarget::Server);
 
-        let mut cmd = tokio::process::Command::new("opencode");
+        let mut cmd = tokio::process::Command::from(crate::process::resolve_command("opencode")?);
         cmd.arg("serve").arg("--port").arg(port.to_string());
         cmd.current_dir(if cwd.is_empty() { "." } else { cwd });
         cmd.stdout(std::process::Stdio::piped());
@@ -154,11 +154,11 @@ impl ProcessManager {
         self.emit_state(ProcessTarget::Bridge);
 
         let mut cmd = if use_bun {
-            let mut c = tokio::process::Command::new("bun");
+            let mut c = tokio::process::Command::from(crate::process::resolve_command("bun")?);
             c.arg("run").arg("src/index.ts");
             c
         } else {
-            let mut c = tokio::process::Command::new("npx");
+            let mut c = tokio::process::Command::from(crate::process::resolve_command("npx")?);
             c.arg("tsx").arg("src/index.ts");
             c
         };
