@@ -43,11 +43,12 @@ pub(crate) struct ManagedProcess {
     pub state: ProcessState,
     pub child: Option<Child>,
     pub started_at_instant: Option<Instant>,
+    pub stopping: bool,
 }
 
 impl ManagedProcess {
     fn new() -> Self {
-        Self { state: ProcessState::default(), child: None, started_at_instant: None }
+        Self { state: ProcessState::default(), child: None, started_at_instant: None, stopping: false }
     }
 }
 
@@ -205,6 +206,7 @@ impl ProcessManager {
             match mp.state.state {
                 ProcessStateKind::Running | ProcessStateKind::Starting => {
                     mp.state.state = ProcessStateKind::Stopping;
+                    mp.stopping = true;
                     _pid = mp.state.pid;
                 }
                 _ => return Ok(()),
@@ -240,6 +242,7 @@ impl ProcessManager {
                     exit_code, healthy: None,
                 };
                 mp.started_at_instant = None;
+                mp.stopping = false;
             }
             self.emit_state(target);
         }

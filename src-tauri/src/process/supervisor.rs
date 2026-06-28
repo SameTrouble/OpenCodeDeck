@@ -53,7 +53,10 @@ pub(crate) async fn supervise(
 ) {
     let (stdout, stderr, child_ref) = {
         let mut mp = crate::process::lock_or_recover(&process);
-        let child = mp.child.as_mut().expect("no child");
+        let child = match mp.child.as_mut() {
+            Some(c) => c,
+            None => return,
+        };
         let stdout = child.stdout.take();
         let stderr = child.stderr.take();
         (stdout, stderr, process.clone())
@@ -82,8 +85,14 @@ pub(crate) async fn supervise(
     };
     {
         let mut mp = crate::process::lock_or_recover(&child_ref);
+        let next_state = if mp.stopping {
+            mp.stopping = false;
+            ProcessStateKind::Stopped
+        } else {
+            ProcessStateKind::Failed
+        };
         mp.state = ProcessState {
-            state: ProcessStateKind::Failed,
+            state: next_state,
             pid: None, started_at: None, uptime_sec: None,
             exit_code, healthy: None,
         };
@@ -103,7 +112,10 @@ pub(crate) async fn supervise_with_qr(
 ) {
     let (stdout, stderr, child_ref) = {
         let mut mp = crate::process::lock_or_recover(&process);
-        let child = mp.child.as_mut().expect("no child");
+        let child = match mp.child.as_mut() {
+            Some(c) => c,
+            None => return,
+        };
         let stdout = child.stdout.take();
         let stderr = child.stderr.take();
         (stdout, stderr, process.clone())
@@ -135,8 +147,14 @@ pub(crate) async fn supervise_with_qr(
     };
     {
         let mut mp = crate::process::lock_or_recover(&child_ref);
+        let next_state = if mp.stopping {
+            mp.stopping = false;
+            ProcessStateKind::Stopped
+        } else {
+            ProcessStateKind::Failed
+        };
         mp.state = ProcessState {
-            state: ProcessStateKind::Failed,
+            state: next_state,
             pid: None, started_at: None, uptime_sec: None,
             exit_code, healthy: None,
         };
