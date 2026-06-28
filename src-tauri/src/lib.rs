@@ -95,10 +95,13 @@ pub fn run() {
                         }
                     }
                     "quit" => {
-                        let state = app.state::<state::AppState>();
-                        let _ = state.process_manager.stop(process::ProcessTarget::Bridge);
-                        let _ = state.process_manager.stop(process::ProcessTarget::Server);
-                        app.exit(0);
+                        let handle = app.clone();
+                        tauri::async_runtime::spawn(async move {
+                            let state = handle.state::<state::AppState>();
+                            let _ = state.process_manager.stop_async(process::ProcessTarget::Bridge).await;
+                            let _ = state.process_manager.stop_async(process::ProcessTarget::Server).await;
+                            handle.exit(0);
+                        });
                     }
                     "start_all" => {
                         let handle = app.clone();
