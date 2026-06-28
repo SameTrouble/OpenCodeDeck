@@ -73,7 +73,7 @@ pub fn run() {
                     if v != last_version || checker.is_none() {
                         last_version = v;
                         let cfg = state.load_config().unwrap_or_else(|_| config::ConfigStore::default_config());
-                        let server_url = format!("http://127.0.0.1:{}", cfg.server.port);
+                        let server_url = cfg.servers.first().map(|s| s.url.clone()).unwrap_or_default();
                         checker = Some(monitor::health::HealthChecker::new(&server_url));
                     }
                     let healthy = match &checker {

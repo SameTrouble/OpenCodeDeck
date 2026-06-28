@@ -35,7 +35,7 @@ pub async fn start_process(target: String, state: State<'_, AppState>) -> AppRes
     let target = parse_target(&target)?;
     let cfg = state.load_config()?;
     match target {
-        ProcessTarget::Server => state.process_manager.start_server(cfg.server.port, &cfg.server.cwd, &cfg.server.extra_env),
+        ProcessTarget::Server => { let s = cfg.servers.first().ok_or_else(|| AppError::Config("no server".into()))?; state.process_manager.start_server(4097, &s.cwd, &s.extra_env) },
         ProcessTarget::Bridge => {
             let installer = BridgeInstaller::new(state.config_store.bridge_install_path(&cfg));
             if !installer.is_installed() {
@@ -65,7 +65,8 @@ pub async fn restart_process(target: String, state: State<'_, AppState>) -> AppR
 
 pub async fn do_start_all(state: &AppState) -> AppResult<()> {
     let cfg = state.load_config()?;
-    state.process_manager.start_server(cfg.server.port, &cfg.server.cwd, &cfg.server.extra_env)?;
+    let s = cfg.servers.first().ok_or_else(|| AppError::Config("no server".into()))?;
+    state.process_manager.start_server(4097, &s.cwd, &s.extra_env)?;
     let installer = BridgeInstaller::new(state.config_store.bridge_install_path(&cfg));
     if !installer.is_installed() {
         installer.install().await?;

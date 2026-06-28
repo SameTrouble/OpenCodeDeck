@@ -270,7 +270,7 @@ impl ProcessManager {
     pub async fn restart_async(&self, target: ProcessTarget, cfg: &crate::config::AppConfig, bridge_dir: &Path, use_bun: bool) -> AppResult<ProcessState> {
         self.stop_async(target).await?;
         match target {
-            ProcessTarget::Server => self.start_server(cfg.server.port, &cfg.server.cwd, &cfg.server.extra_env),
+            ProcessTarget::Server => { let s = cfg.servers.first().ok_or_else(|| AppError::Config("no server".into()))?; self.start_server(4097, &s.cwd, &s.extra_env) },
             ProcessTarget::Bridge => {
                 crate::config::renderer::write_bridge_files(cfg, bridge_dir)?;
                 self.start_bridge(bridge_dir, use_bun)

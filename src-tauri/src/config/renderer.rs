@@ -5,10 +5,13 @@ use crate::config::store::AppConfig;
 pub fn render_env(config: &AppConfig) -> String {
     let mut lines = Vec::new();
 
-    let server_url = format!("http://127.0.0.1:{}", config.server.port);
+    let server_url = config.servers.iter().find(|s| s.id == config.bridge.bound_server_id).map(|s| s.url.as_str()).unwrap_or("http://127.0.0.1:4097");
     lines.push(format!("OPENCODE_SERVER_URL={}", server_url));
-    if !config.server.cwd.is_empty() {
-        lines.push(format!("OPENCODE_CWD={}", config.server.cwd));
+    let bound_server = config.servers.iter().find(|s| s.id == config.bridge.bound_server_id);
+    if let Some(server) = bound_server {
+        if !server.cwd.is_empty() {
+            lines.push(format!("OPENCODE_CWD={}", server.cwd));
+        }
     }
 
     let f = &config.channels.feishu;
@@ -50,8 +53,6 @@ pub fn render_env(config: &AppConfig) -> String {
     if w.enabled {
         lines.push("WECHAT_ENABLED=true".to_string());
     }
-
-    lines.push(format!("OPENCODE_SERVER_PORT={}", config.server.port));
 
     lines.join("\n") + "\n"
 }
@@ -159,11 +160,11 @@ mod tests {
     #[test]
     fn render_env_server_url_derived_from_port() {
         let mut cfg = ConfigStore::default_config();
-        cfg.server.port = 4092;
+        cfg.servers[0].url = "http://127.0.0.1:4092".to_string();
         let env = render_env(&cfg);
         assert!(
             env.contains("OPENCODE_SERVER_URL=http://127.0.0.1:4092"),
-            "OPENCODE_SERVER_URL must be derived from port, got: {}",
+            "OPENCODE_SERVER_URL must match config, got: {}",
             env
         );
     }

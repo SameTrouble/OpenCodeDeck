@@ -4,20 +4,22 @@ use crate::error::AppResult;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct AppConfig {
-    pub version: u32,
-    pub server: ServerConfig,
-    pub bridge: BridgeConfig,
-    pub channels: ChannelsConfig,
+pub struct ServerConfig {
+    pub id: String,
+    pub name: String,
+    pub url: String,
+    pub cwd: String,
+    #[serde(default)]
+    pub extra_env: std::collections::HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ServerConfig {
-    pub port: u16,
-    pub cwd: String,
-    #[serde(default)]
-    pub extra_env: std::collections::HashMap<String, String>,
+pub struct AppConfig {
+    pub version: u32,
+    pub servers: Vec<ServerConfig>,
+    pub bridge: BridgeConfig,
+    pub channels: ChannelsConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -31,7 +33,11 @@ pub struct BridgeConfig {
     pub progress: ProgressConfig,
     #[serde(default)]
     pub launcher: LauncherConfig,
+    #[serde(default = "default_bound_server_id")]
+    pub bound_server_id: String,
 }
+
+fn default_bound_server_id() -> String { "default".to_string() }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -166,6 +172,66 @@ pub struct WechatConfig {
     pub enabled: bool,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LegacyAppConfig {
+    version: u32,
+    server: LegacyServerConfig,
+    bridge: LegacyBridgeConfig,
+    #[serde(default)]
+    channels: ChannelsConfig,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LegacyServerConfig {
+    port: u16,
+    cwd: String,
+    #[serde(default)]
+    extra_env: std::collections::HashMap<String, String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LegacyBridgeConfig {
+    #[serde(default)]
+    install_path: Option<String>,
+    #[serde(default = "default_agent_str")]
+    default_agent: String,
+    #[serde(default = "default_data_dir")]
+    data_dir: String,
+    #[serde(default)]
+    progress: ProgressConfig,
+    #[serde(default)]
+    launcher: LauncherConfig,
+}
+
+fn default_agent_str() -> String { "build".to_string() }
+fn default_data_dir() -> String { "./data".to_string() }
+
+fn migrate_legacy(legacy: LegacyAppConfig) -> AppConfig {
+    let server_id = "default".to_string();
+    AppConfig {
+        version: legacy.version,
+        servers: vec![ServerConfig {
+            id: server_id.clone(),
+            name: "默认".to_string(),
+            url: format!("http://127.0.0.1:{}", legacy.server.port),
+            cwd: legacy.server.cwd,
+            extra_env: legacy.server.extra_env,
+        }],
+        bridge: BridgeConfig {
+            install_path: legacy.bridge.install_path,
+            default_agent: legacy.bridge.default_agent,
+            data_dir: legacy.bridge.data_dir,
+            progress: legacy.bridge.progress,
+            launcher: legacy.bridge.launcher,
+            bound_server_id: server_id,
+        },
+        channels: legacy.channels,
+    }
+}
+
 pub struct ConfigStore {
     config_dir: PathBuf,
 }
@@ -187,17 +253,20 @@ impl ConfigStore {
     pub fn default_config() -> AppConfig {
         AppConfig {
             version: 1,
-            server: ServerConfig {
-                port: 4097,
+            servers: vec![ServerConfig {
+                id: "default".to_string(),
+                name: "默认".to_string(),
+                url: "http://127.0.0.1:4097".to_string(),
                 cwd: dirs::home_dir().map(|p| p.to_string_lossy().to_string()).unwrap_or_default(),
                 extra_env: Default::default(),
-            },
+            }],
             bridge: BridgeConfig {
                 install_path: None,
                 default_agent: "build".to_string(),
                 data_dir: "./data".to_string(),
                 progress: ProgressConfig::default(),
                 launcher: LauncherConfig::default(),
+                bound_server_id: "default".to_string(),
             },
             channels: ChannelsConfig::default(),
         }
@@ -211,20 +280,23 @@ impl ConfigStore {
             return Ok(cfg);
         }
         let content = std::fs::read_to_string(&path)?;
-        match serde_json::from_str::<AppConfig>(&content) {
-            Ok(cfg) => Ok(cfg),
-            Err(_) => {
-                let ts = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map(|d| d.as_millis())
-                    .unwrap_or(0);
-                let backup = path.with_extension(format!("json.corrupt-{}", ts));
-                let _ = std::fs::rename(&path, &backup);
-                let cfg = Self::default_config();
-                let _ = self.save(&cfg);
-                Ok(cfg)
-            }
+        if let Ok(cfg) = serde_json::from_str::<AppConfig>(&content) {
+            return Ok(cfg);
         }
+        if let Ok(legacy) = serde_json::from_str::<LegacyAppConfig>(&content) {
+            let cfg = migrate_legacy(legacy);
+            let _ = self.save(&cfg);
+            return Ok(cfg);
+        }
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0);
+        let backup = path.with_extension(format!("json.corrupt-{}", ts));
+        let _ = std::fs::rename(&path, &backup);
+        let cfg = Self::default_config();
+        let _ = self.save(&cfg);
+        Ok(cfg)
     }
 
     pub fn save(&self, config: &AppConfig) -> AppResult<()> {
@@ -262,7 +334,7 @@ mod robustness_tests {
         std::fs::write(store.config_path(), "{ not valid json").unwrap();
 
         let cfg = store.load().unwrap();
-        assert_eq!(cfg.server.port, 4097);
+        assert_eq!(cfg.servers[0].url, "http://127.0.0.1:4097");
 
         // corrupt file was backed up
         let mut entries = std::fs::read_dir(store.config_dir()).unwrap()
@@ -288,5 +360,50 @@ mod robustness_tests {
         assert!(!entries.iter().any(|n| n == "config.json.tmp"),
             "tmp file should not remain after save, got: {:?}", entries);
         assert!(entries.iter().any(|n| n == "config.json"));
+    }
+
+    #[test]
+    fn migrates_legacy_single_server_config() {
+        let (store, _dir) = temp_store();
+        std::fs::create_dir_all(store.config_dir()).unwrap();
+        let legacy = serde_json::json!({
+            "version": 1,
+            "server": {
+                "port": 4097,
+                "cwd": "/home/user",
+                "extraEnv": {}
+            },
+            "bridge": {
+                "installPath": null,
+                "defaultAgent": "build",
+                "dataDir": "./data",
+                "progress": { "debounceMs": 500, "maxDebounceMs": 3000 },
+                "launcher": {
+                    "enabled": true,
+                    "autoStartServer": true,
+                    "serverCommand": "opencode serve",
+                    "serverStartTimeoutMs": 30000,
+                    "probeTimeoutMs": 4000
+                }
+            },
+            "channels": {}
+        });
+        std::fs::write(store.config_path(), legacy.to_string()).unwrap();
+
+        let cfg = store.load().unwrap();
+        assert_eq!(cfg.servers.len(), 1, "legacy server should migrate to one-element servers array");
+        assert_eq!(cfg.servers[0].url, "http://127.0.0.1:4097");
+        assert_eq!(cfg.servers[0].cwd, "/home/user");
+        assert_eq!(cfg.servers[0].id, "default");
+        assert_eq!(cfg.bridge.bound_server_id, "default");
+    }
+
+    #[test]
+    fn default_config_has_empty_servers_with_bound_id() {
+        let cfg = ConfigStore::default_config();
+        assert!(!cfg.servers.is_empty(), "default config should have at least one server");
+        assert!(!cfg.bridge.bound_server_id.is_empty(), "default bound_server_id should be set");
+        let default_id = &cfg.servers[0].id;
+        assert_eq!(&cfg.bridge.bound_server_id, default_id, "default bound_server_id must point to first server");
     }
 }
