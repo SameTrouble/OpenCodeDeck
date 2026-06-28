@@ -57,23 +57,27 @@ async fn read_stream_with_qr<R: tokio::io::AsyncRead + Unpin>(
     }
 }
 
-pub(crate) async fn supervise(
-    process: Arc<Mutex<ManagedProcess>>,
-    target: ProcessTarget,
-    on_log: LogCallback,
-    on_state: StateCallback,
+pub(crate) async fn supervise_with_id(
+    servers: Arc<Mutex<std::collections::HashMap<String, super::manager::ManagedProcess>>>,
+    server_id: String,
+    on_log: super::manager::LogCallback,
+    on_state: super::manager::StateCallback,
 ) {
     let (stdout, stderr, child_ref) = {
-        let mut mp = crate::process::lock_or_recover(&process);
+        let mut guard = crate::process::lock_or_recover(&servers);
+        let mp = match guard.get_mut(&server_id) {
+            Some(mp) => mp,
+            None => return,
+        };
         let child = match mp.child.as_mut() {
             Some(c) => c,
             None => return,
         };
         let stdout = child.stdout.take();
         let stderr = child.stderr.take();
-        (stdout, stderr, process.clone())
+        (stdout, stderr, servers.clone())
     };
-    let source = source_str(target).to_string();
+    let source = "server".to_string();
     let log_clone = on_log.clone();
     let stdout_task = if let Some(out) = stdout {
         Some(tokio::spawn(read_stream(out, source.clone(), "info".into(), on_log)))
@@ -87,8 +91,11 @@ pub(crate) async fn supervise(
 
     let exit_code = {
         let child = {
-            let mut mp = crate::process::lock_or_recover(&child_ref);
-            mp.child.take()
+            let mut guard = crate::process::lock_or_recover(&child_ref);
+            match guard.get_mut(&server_id) {
+                Some(mp) => mp.child.take(),
+                None => return,
+            }
         };
         match child {
             Some(mut c) => c.wait().await.ok().and_then(|s| s.code()),
@@ -96,22 +103,25 @@ pub(crate) async fn supervise(
         }
     };
     {
-        let mut mp = crate::process::lock_or_recover(&child_ref);
-        let next_state = if mp.stopping {
-            mp.stopping = false;
-            ProcessStateKind::Stopped
-        } else {
-            ProcessStateKind::Failed
-        };
-        mp.state = ProcessState {
-            state: next_state,
-            pid: None, started_at: None, uptime_sec: None,
-            exit_code, healthy: None,
-        };
-        mp.started_at_instant = None;
-        let state = mp.state.clone();
-        drop(mp);
-        on_state(target, state);
+        let mut guard = crate::process::lock_or_recover(&child_ref);
+        if let Some(mp) = guard.get_mut(&server_id) {
+            let next_state = if mp.stopping {
+                mp.stopping = false;
+                super::manager::ProcessStateKind::Stopped
+            } else {
+                super::manager::ProcessStateKind::Failed
+            };
+            mp.state = super::manager::ProcessState {
+                state: next_state,
+                pid: None, started_at: None, uptime_sec: None,
+                exit_code, healthy: None,
+            };
+            mp.started_at_instant = None;
+            let state = mp.state.clone();
+            let id_owned = server_id.clone();
+            drop(guard);
+            on_state(super::manager::ProcessTarget::Server, Some(id_owned), state);
+        }
     }
 }
 
@@ -173,6 +183,6 @@ pub(crate) async fn supervise_with_qr(
         mp.started_at_instant = None;
         let state = mp.state.clone();
         drop(mp);
-        on_state(target, state);
+        on_state(target, None, state);
     }
 }

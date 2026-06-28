@@ -2,7 +2,7 @@ pub mod manager;
 pub mod supervisor;
 pub mod command_util;
 
-pub use manager::{ProcessManager, ProcessState, ProcessTarget, ProcessStateKind, StateCallback, LogCallback, QrCallback};
+pub use manager::{ProcessManager, ProcessState, ProcessTarget, ProcessStateKind, StateCallback, LogCallback, QrCallback, ServerStateItem};
 pub use command_util::resolve_command;
 
 use std::sync::{Mutex, MutexGuard};

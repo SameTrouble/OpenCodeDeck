@@ -23,9 +23,13 @@ pub fn run() {
 
             let on_state: process::StateCallback = Arc::new({
                 let handle = handle.clone();
-                move |target, state| {
+                move |target, server_id, state| {
                     let target_str = if target == process::ProcessTarget::Server { "server" } else { "bridge" };
-                    let _ = handle.emit("state://update", serde_json::json!({ "target": target_str, "state": state }));
+                    let _ = handle.emit("state://update", serde_json::json!({
+                        "target": target_str,
+                        "serverId": server_id,
+                        "state": state
+                    }));
                 }
             });
 
@@ -65,7 +69,11 @@ pub fn run() {
                 loop {
                     interval.tick().await;
                     let state = handle2.state::<state::AppState>();
-                    let server_state = state.process_manager.get_state(process::ProcessTarget::Server);
+                    let server_states = state.process_manager.get_all_server_states();
+                    let (server_id, server_state) = match server_states.first() {
+                        Some((id, ps)) => (id.clone(), ps.clone()),
+                        None => continue,
+                    };
                     if server_state.state != process::ProcessStateKind::Running {
                         continue;
                     }
@@ -73,15 +81,18 @@ pub fn run() {
                     if v != last_version || checker.is_none() {
                         last_version = v;
                         let cfg = state.load_config().unwrap_or_else(|_| config::ConfigStore::default_config());
-                        let server_url = cfg.servers.first().map(|s| s.url.clone()).unwrap_or_default();
+                        let server_url = cfg.servers.iter().find(|s| s.id == server_id)
+                            .or_else(|| cfg.servers.first())
+                            .map(|s| s.url.clone())
+                            .unwrap_or_default();
                         checker = Some(monitor::health::HealthChecker::new(&server_url));
                     }
                     let healthy = match &checker {
                         Some(c) => c.check_once().await,
                         None => false,
                     };
-                    state.process_manager.set_health(process::ProcessTarget::Server, healthy);
-                    let _ = handle2.emit("health://update", serde_json::json!({ "target": "server", "healthy": healthy }));
+                    state.process_manager.set_health(process::ProcessTarget::Server, Some(server_id.clone()), healthy);
+                    let _ = handle2.emit("health://update", serde_json::json!({ "target": "server", "serverId": server_id, "healthy": healthy }));
                 }
             });
 
@@ -116,7 +127,7 @@ pub fn run() {
                         tauri::async_runtime::spawn(async move {
                             let state = handle.state::<state::AppState>();
                             let _ = state.process_manager.stop_async(process::ProcessTarget::Bridge).await;
-                            let _ = state.process_manager.stop_async(process::ProcessTarget::Server).await;
+                            state.process_manager.stop_all_servers().await;
                             handle.exit(0);
                         });
                     }
