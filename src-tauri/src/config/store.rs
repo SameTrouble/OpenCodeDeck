@@ -218,7 +218,7 @@ impl ConfigStore {
             Err(_) => {
                 let ts = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
-                    .map(|d| d.as_secs())
+                    .map(|d| d.as_millis())
                     .unwrap_or(0);
                 let backup = path.with_extension(format!("json.corrupt-{}", ts));
                 let _ = std::fs::rename(&path, &backup);
