@@ -213,14 +213,28 @@ impl ConfigStore {
             return Ok(cfg);
         }
         let content = std::fs::read_to_string(&path)?;
-        let cfg: AppConfig = serde_json::from_str(&content)?;
-        Ok(cfg)
+        match serde_json::from_str::<AppConfig>(&content) {
+            Ok(cfg) => Ok(cfg),
+            Err(_) => {
+                let ts = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0);
+                let backup = path.with_extension(format!("json.corrupt-{}", ts));
+                let _ = std::fs::rename(&path, &backup);
+                let cfg = Self::default_config();
+                let _ = self.save(&cfg);
+                Ok(cfg)
+            }
+        }
     }
 
     pub fn save(&self, config: &AppConfig) -> AppResult<()> {
         std::fs::create_dir_all(&self.config_dir)?;
         let content = serde_json::to_string_pretty(config)?;
-        std::fs::write(self.config_path(), content)?;
+        let tmp = self.config_path().with_extension("json.tmp");
+        std::fs::write(&tmp, &content)?;
+        std::fs::rename(&tmp, self.config_path())?;
         Ok(())
     }
 
@@ -230,5 +244,52 @@ impl ConfigStore {
         } else {
             self.config_dir.join("bridges").join("opencode-im-bridge")
         }
+    }
+}
+
+#[cfg(test)]
+mod robustness_tests {
+    use super::*;
+    use std::io::Write;
+
+    fn temp_store() -> (ConfigStore, tempfile::TempDir) {
+        let dir = tempfile::tempdir().unwrap();
+        let store = ConfigStore { config_dir: dir.path().to_path_buf() };
+        (store, dir)
+    }
+
+    #[test]
+    fn load_backs_up_corrupt_file_and_returns_default() {
+        let (store, _dir) = temp_store();
+        std::fs::create_dir_all(store.config_dir()).unwrap();
+        std::fs::write(store.config_path(), "{ not valid json").unwrap();
+
+        let cfg = store.load().unwrap();
+        assert_eq!(cfg.server.port, 4097);
+
+        // corrupt file was backed up
+        let mut entries = std::fs::read_dir(store.config_dir()).unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .collect::<Vec<_>>();
+        entries.sort();
+        assert!(entries.iter().any(|n| n.starts_with("config.json.corrupt-")),
+            "expected a corrupt backup, got: {:?}", entries);
+        // config.json now exists and is valid
+        assert!(store.config_path().exists());
+    }
+
+    #[test]
+    fn save_is_atomic_no_tmp_residue() {
+        let (store, _dir) = temp_store();
+        let cfg = ConfigStore::default_config();
+        store.save(&cfg).unwrap();
+        let entries: Vec<_> = std::fs::read_dir(store.config_dir()).unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .collect();
+        assert!(!entries.iter().any(|n| n == "config.json.tmp"),
+            "tmp file should not remain after save, got: {:?}", entries);
+        assert!(entries.iter().any(|n| n == "config.json"));
     }
 }
