@@ -63,6 +63,74 @@ pub fn run() {
                 }
             });
 
+            use tauri::tray::{TrayIconBuilder, MouseButton, MouseButtonState, TrayIconEvent};
+            use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+
+            let quit_item = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
+            let show_item = MenuItem::with_id(app, "show", "显示主窗口", true, None::<&str>)?;
+            let start_all_item = MenuItem::with_id(app, "start_all", "启动全部", true, None::<&str>)?;
+            let stop_all_item = MenuItem::with_id(app, "stop_all", "停止全部", true, None::<&str>)?;
+            let restart_all_item = MenuItem::with_id(app, "restart_all", "重启全部", true, None::<&str>)?;
+            let sep = PredefinedMenuItem::separator(app)?;
+            let menu = Menu::with_items(app, &[
+                &start_all_item, &stop_all_item, &restart_all_item, &sep, &show_item, &sep, &quit_item,
+            ])?;
+
+            let _tray = TrayIconBuilder::new()
+                .icon(app.default_window_icon().unwrap().clone())
+                .menu(&menu)
+                .tooltip("OpenCodeDeck")
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "show" => {
+                        if let Some(w) = app.get_webview_window("main") {
+                            let _ = w.show();
+                            let _ = w.set_focus();
+                        }
+                    }
+                    "quit" => {
+                        let state = app.state::<state::AppState>();
+                        let _ = state.process_manager.stop(process::ProcessTarget::Bridge);
+                        let _ = state.process_manager.stop(process::ProcessTarget::Server);
+                        app.exit(0);
+                    }
+                    "start_all" => {
+                        let state = app.state::<state::AppState>();
+                        let _ = commands::do_start_all(state.inner());
+                    }
+                    "stop_all" => {
+                        let state = app.state::<state::AppState>();
+                        let _ = commands::do_stop_all(state.inner());
+                    }
+                    "restart_all" => {
+                        let state = app.state::<state::AppState>();
+                        let _ = commands::do_restart_all(state.inner());
+                    }
+                    _ => {}
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event {
+                        let app = tray.app_handle();
+                        if let Some(w) = app.get_webview_window("main") {
+                            if w.is_visible().unwrap_or(false) {
+                                let _ = w.hide();
+                            } else {
+                                let _ = w.show();
+                                let _ = w.set_focus();
+                            }
+                        }
+                    }
+                })
+                .build(app)?;
+
+            let main_window = app.get_webview_window("main").unwrap();
+            let hide_handle = main_window.clone();
+            main_window.on_window_event(move |event| {
+                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                    api.prevent_close();
+                    let _ = hide_handle.hide();
+                }
+            });
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
