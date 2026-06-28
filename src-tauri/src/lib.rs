@@ -1,6 +1,7 @@
 pub mod error;
 pub mod config;
 pub mod monitor;
+pub mod process;
 
 pub fn run() {
     tauri::Builder::default()
