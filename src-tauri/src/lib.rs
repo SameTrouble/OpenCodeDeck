@@ -131,27 +131,9 @@ pub fn run() {
                             handle.exit(0);
                         });
                     }
-                    "start_all" => {
-                        let handle = app.clone();
-                        tauri::async_runtime::spawn(async move {
-                            let state = handle.state::<state::AppState>();
-                            let _ = commands::do_start_all(state.inner()).await;
-                        });
-                    }
-                    "stop_all" => {
-                        let handle = app.clone();
-                        tauri::async_runtime::spawn(async move {
-                            let state = handle.state::<state::AppState>();
-                            let _ = commands::do_stop_all(state.inner()).await;
-                        });
-                    }
-                    "restart_all" => {
-                        let handle = app.clone();
-                        tauri::async_runtime::spawn(async move {
-                            let state = handle.state::<state::AppState>();
-                            let _ = commands::do_restart_all(state.inner()).await;
-                        });
-                    }
+                    "start_all" => {}
+                    "stop_all" => {}
+                    "restart_all" => {}
                     _ => {}
                 })
                 .on_tray_icon_event(|tray, event| {
@@ -185,11 +167,9 @@ pub fn run() {
             commands::start_process,
             commands::stop_process,
             commands::restart_process,
-            commands::start_all,
-            commands::stop_all,
-            commands::restart_all,
             commands::get_config,
             commands::save_config,
+            commands::bind_bridge,
             commands::check_bridge_update,
             commands::update_bridge,
             commands::reinstall_bridge,

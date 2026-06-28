@@ -5,10 +5,14 @@ use crate::config::store::AppConfig;
 pub fn render_env(config: &AppConfig) -> String {
     let mut lines = Vec::new();
 
-    let server_url = config.servers.iter().find(|s| s.id == config.bridge.bound_server_id).map(|s| s.url.as_str()).unwrap_or("http://127.0.0.1:4097");
+    let server_url = config.servers.iter()
+        .find(|s| s.id == config.bridge.bound_server_id)
+        .or_else(|| config.servers.first())
+        .map(|s| s.url.as_str())
+        .unwrap_or("http://127.0.0.1:4097");
     lines.push(format!("OPENCODE_SERVER_URL={}", server_url));
-    let bound_server = config.servers.iter().find(|s| s.id == config.bridge.bound_server_id);
-    if let Some(server) = bound_server {
+    if let Some(server) = config.servers.iter().find(|s| s.id == config.bridge.bound_server_id)
+        .or_else(|| config.servers.first()) {
         if !server.cwd.is_empty() {
             lines.push(format!("OPENCODE_CWD={}", server.cwd));
         }
@@ -158,7 +162,7 @@ mod tests {
     }
 
     #[test]
-    fn render_env_server_url_derived_from_port() {
+    fn render_env_uses_server_url_from_config() {
         let mut cfg = ConfigStore::default_config();
         cfg.servers[0].url = "http://127.0.0.1:4092".to_string();
         let env = render_env(&cfg);
@@ -167,5 +171,34 @@ mod tests {
             "OPENCODE_SERVER_URL must match config, got: {}",
             env
         );
+    }
+
+    #[test]
+    fn render_env_uses_bound_server_url() {
+        let mut cfg = ConfigStore::default_config();
+        cfg.servers.push(ServerConfig {
+            id: "second".to_string(),
+            name: "Second".to_string(),
+            url: "http://127.0.0.1:5050".to_string(),
+            cwd: "/tmp".to_string(),
+            extra_env: Default::default(),
+        });
+        cfg.bridge.bound_server_id = "second".to_string();
+        let env = render_env(&cfg);
+        assert!(
+            env.contains("OPENCODE_SERVER_URL=http://127.0.0.1:5050"),
+            "OPENCODE_SERVER_URL must come from bound server, got: {}",
+            env
+        );
+        assert!(!env.contains("OPENCODE_SERVER_PORT="), "OPENCODE_SERVER_PORT should be removed");
+    }
+
+    #[test]
+    fn render_env_falls_back_when_bound_id_not_found() {
+        let mut cfg = ConfigStore::default_config();
+        cfg.bridge.bound_server_id = "nonexistent".to_string();
+        let env = render_env(&cfg);
+        assert!(env.contains("OPENCODE_SERVER_URL=http://127.0.0.1:4097"),
+            "should fall back to first server url, got: {}", env);
     }
 }

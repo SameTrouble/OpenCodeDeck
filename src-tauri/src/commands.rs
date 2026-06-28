@@ -4,20 +4,28 @@ use crate::bridge::{check_deps as bridge_check_deps, DepStatus, BridgeInstaller}
 use crate::config::{AppConfig, renderer};
 use crate::error::{AppError, AppResult};
 use crate::monitor::LogEntry;
-use crate::process::{ProcessState, ProcessTarget};
+use crate::process::{ProcessState, ProcessTarget, ServerStateItem};
 use crate::state::AppState;
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FullState {
-    pub server: ProcessState,
+    pub servers: Vec<ServerStateItem>,
     pub bridge: ProcessState,
 }
 
 #[tauri::command]
 pub fn get_state(state: State<'_, AppState>) -> AppResult<FullState> {
+    let cfg = state.load_config()?;
+    let server_states = state.process_manager.get_all_server_states();
+    let servers = server_states.into_iter().map(|(id, ps)| {
+        let name = cfg.servers.iter().find(|s| s.id == id)
+            .map(|s| s.name.clone())
+            .unwrap_or_else(|| id.clone());
+        ServerStateItem { id, name, state: ps }
+    }).collect();
     Ok(FullState {
-        server: state.process_manager.get_state(ProcessTarget::Server),
+        servers,
         bridge: state.process_manager.get_state(ProcessTarget::Bridge),
     })
 }
@@ -31,11 +39,14 @@ fn parse_target(target: &str) -> AppResult<ProcessTarget> {
 }
 
 #[tauri::command]
-pub async fn start_process(target: String, state: State<'_, AppState>) -> AppResult<ProcessState> {
+pub async fn start_process(target: String, server_id: Option<String>, state: State<'_, AppState>) -> AppResult<ProcessState> {
     let target = parse_target(&target)?;
     let cfg = state.load_config()?;
     match target {
-        ProcessTarget::Server => { let s = cfg.servers.first().ok_or_else(|| AppError::Config("no server".into()))?; state.process_manager.start_server(&s.id, &cfg) },
+        ProcessTarget::Server => {
+            let id = server_id.ok_or_else(|| AppError::Process("server_id required for server target".into()))?;
+            state.process_manager.start_server(&id, &cfg)
+        }
         ProcessTarget::Bridge => {
             let installer = BridgeInstaller::new(state.config_store.bridge_install_path(&cfg));
             if !installer.is_installed() {
@@ -49,63 +60,33 @@ pub async fn start_process(target: String, state: State<'_, AppState>) -> AppRes
 }
 
 #[tauri::command]
-pub async fn stop_process(target: String, state: State<'_, AppState>) -> AppResult<()> {
+pub async fn stop_process(target: String, server_id: Option<String>, state: State<'_, AppState>) -> AppResult<()> {
     let target = parse_target(&target)?;
     match target {
         ProcessTarget::Server => {
-            let cfg = state.load_config()?;
-            let s = cfg.servers.first().ok_or_else(|| AppError::Config("no server".into()))?;
-            state.process_manager.stop_server(&s.id).await
+            let id = server_id.ok_or_else(|| AppError::Process("server_id required for server target".into()))?;
+            state.process_manager.stop_server(&id).await
         }
         ProcessTarget::Bridge => state.process_manager.stop_async(target).await,
     }
 }
 
 #[tauri::command]
-pub async fn restart_process(target: String, state: State<'_, AppState>) -> AppResult<ProcessState> {
+pub async fn restart_process(target: String, server_id: Option<String>, state: State<'_, AppState>) -> AppResult<ProcessState> {
     let target = parse_target(&target)?;
     let cfg = state.load_config()?;
-    let bridge_dir = state.config_store.bridge_install_path(&cfg);
-    let deps = bridge_check_deps();
     match target {
-        ProcessTarget::Server => { let s = cfg.servers.first().ok_or_else(|| AppError::Config("no server".into()))?; state.process_manager.restart_server(&s.id, &cfg).await },
-        ProcessTarget::Bridge => state.process_manager.restart_async(target, &cfg, &bridge_dir, deps.bun).await,
+        ProcessTarget::Server => {
+            let id = server_id.ok_or_else(|| AppError::Process("server_id required for server target".into()))?;
+            state.process_manager.restart_server(&id, &cfg).await
+        }
+        ProcessTarget::Bridge => {
+            let bridge_dir = state.config_store.bridge_install_path(&cfg);
+            let deps = bridge_check_deps();
+            state.process_manager.restart_async(target, &cfg, &bridge_dir, deps.bun).await
+        }
     }
 }
-
-pub async fn do_start_all(state: &AppState) -> AppResult<()> {
-    let cfg = state.load_config()?;
-    let s = cfg.servers.first().ok_or_else(|| AppError::Config("no server".into()))?;
-    state.process_manager.start_server(&s.id, &cfg)?;
-    let installer = BridgeInstaller::new(state.config_store.bridge_install_path(&cfg));
-    if !installer.is_installed() {
-        installer.install().await?;
-    }
-    renderer::write_bridge_files(&cfg, installer.path())?;
-    let deps = bridge_check_deps();
-    state.process_manager.start_bridge(installer.path(), deps.bun)?;
-    Ok(())
-}
-
-pub async fn do_stop_all(state: &AppState) -> AppResult<()> {
-    state.process_manager.stop_async(ProcessTarget::Bridge).await?;
-    state.process_manager.stop_all_servers().await;
-    Ok(())
-}
-
-pub async fn do_restart_all(state: &AppState) -> AppResult<()> {
-    do_stop_all(state).await?;
-    do_start_all(state).await
-}
-
-#[tauri::command]
-pub async fn start_all(state: State<'_, AppState>) -> AppResult<()> { do_start_all(state.inner()).await }
-
-#[tauri::command]
-pub async fn stop_all(state: State<'_, AppState>) -> AppResult<()> { do_stop_all(state.inner()).await }
-
-#[tauri::command]
-pub async fn restart_all(state: State<'_, AppState>) -> AppResult<()> { do_restart_all(state.inner()).await }
 
 #[tauri::command]
 pub fn get_config(state: State<'_, AppState>) -> AppResult<AppConfig> {
@@ -115,6 +96,23 @@ pub fn get_config(state: State<'_, AppState>) -> AppResult<AppConfig> {
 #[tauri::command]
 pub fn save_config(config: AppConfig, state: State<'_, AppState>) -> AppResult<()> {
     state.save_config(&config)
+}
+
+#[tauri::command]
+pub async fn bind_bridge(server_id: String, state: State<'_, AppState>) -> AppResult<()> {
+    let mut cfg = state.load_config()?;
+    if !cfg.servers.iter().any(|s| s.id == server_id) {
+        return Err(AppError::Config(format!("server not found: {}", server_id)));
+    }
+    cfg.bridge.bound_server_id = server_id;
+    state.save_config(&cfg)?;
+    let bridge_state = state.process_manager.get_state(ProcessTarget::Bridge);
+    if bridge_state.state == crate::process::ProcessStateKind::Running {
+        let bridge_dir = state.config_store.bridge_install_path(&cfg);
+        let deps = bridge_check_deps();
+        state.process_manager.restart_async(ProcessTarget::Bridge, &cfg, &bridge_dir, deps.bun).await?;
+    }
+    Ok(())
 }
 
 #[tauri::command]
