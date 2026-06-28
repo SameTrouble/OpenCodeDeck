@@ -321,3 +321,63 @@ mod serde_tests {
         }
     }
 }
+
+#[cfg(test)]
+mod stopping_flag_tests {
+    use super::*;
+    use std::sync::Arc;
+
+    fn noop_callbacks() -> (StateCallback, LogCallback, QrCallback) {
+        let on_state: StateCallback = Arc::new(|_, _| {});
+        let on_log: LogCallback = Arc::new(|_| {});
+        let on_qr: QrCallback = Arc::new(|_| {});
+        (on_state, on_log, on_qr)
+    }
+
+    #[tokio::test]
+    async fn stop_async_on_unstarted_process_is_noop() {
+        let (on_state, on_log, on_qr) = noop_callbacks();
+        let pm = ProcessManager::new(on_state, on_log, on_qr);
+        pm.stop_async(ProcessTarget::Server).await.unwrap();
+        let s = pm.get_state(ProcessTarget::Server);
+        assert_eq!(s.state, ProcessStateKind::Stopped);
+        {
+            let mp = crate::process::lock_or_recover(&pm.server);
+            assert!(!mp.stopping, "stopping flag must be false when process was never Running");
+        }
+        std::mem::forget(pm);
+    }
+
+    #[tokio::test]
+    async fn stop_async_on_running_process_sets_stopping_flag() {
+        let (on_state, on_log, on_qr) = noop_callbacks();
+        let pm = ProcessManager::new(on_state, on_log, on_qr);
+        {
+            let mut mp = crate::process::lock_or_recover(&pm.server);
+            mp.state.state = ProcessStateKind::Running;
+            mp.stopping = true;
+        }
+        pm.stop_async(ProcessTarget::Server).await.unwrap();
+        let s = pm.get_state(ProcessTarget::Server);
+        assert_eq!(s.state, ProcessStateKind::Stopped, "state should be Stopped after stop_async");
+        {
+            let mp = crate::process::lock_or_recover(&pm.server);
+            assert!(!mp.stopping, "stopping flag must be cleared after stop_async completes");
+        }
+        std::mem::forget(pm);
+    }
+
+    #[tokio::test]
+    async fn restart_async_bridge_writes_config_files() {
+        use crate::config::ConfigStore;
+        let (on_state, on_log, on_qr) = noop_callbacks();
+        let pm = ProcessManager::new(on_state, on_log, on_qr);
+        let cfg = ConfigStore::default_config();
+        let tmp = tempfile::tempdir().unwrap();
+        let bridge_dir = tmp.path().to_path_buf();
+        let _ = pm.restart_async(ProcessTarget::Bridge, &cfg, &bridge_dir, false).await;
+        assert!(bridge_dir.join(".env").exists(), "restart_async must write .env before starting bridge");
+        assert!(bridge_dir.join("opencode-im.jsonc").exists(), "restart_async must write opencode-im.jsonc before starting bridge");
+        std::mem::forget(pm);
+    }
+}
