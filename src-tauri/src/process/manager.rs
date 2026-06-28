@@ -5,7 +5,6 @@ use tokio::process::Child;
 use crate::error::{AppError, AppResult};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
 pub enum ProcessStateKind {
     Stopped,
     Starting,
@@ -111,6 +110,7 @@ impl ProcessManager {
         cmd.envs(extra_env.iter());
         cmd.kill_on_drop(true);
 
+        let _enter_guard = self.runtime.enter();
         let child = cmd.spawn().map_err(|e| AppError::Process(format!("failed to spawn opencode: {}", e)))?;
         let pid = child.id();
         let now = Self::now_ts();
@@ -165,6 +165,7 @@ impl ProcessManager {
         cmd.stderr(std::process::Stdio::piped());
         cmd.kill_on_drop(true);
 
+        let _enter_guard = self.runtime.enter();
         let child = cmd.spawn().map_err(|e| AppError::Process(format!("failed to spawn bridge: {}", e)))?;
         let pid = child.id();
         let now = Self::now_ts();
@@ -196,7 +197,7 @@ impl ProcessManager {
         Ok(self.bridge.lock().unwrap().state.clone())
     }
 
-    pub fn stop(&self, target: ProcessTarget) -> AppResult<()> {
+    pub async fn stop_async(&self, target: ProcessTarget) -> AppResult<()> {
         let mp_ref = self.target_ref(target).clone();
         let _pid;
         {
@@ -211,7 +212,8 @@ impl ProcessManager {
         }
         self.emit_state(target);
 
-        if let Some(mut child) = mp_ref.lock().unwrap().child.take() {
+        let child_opt = mp_ref.lock().unwrap().child.take();
+        if let Some(mut child) = child_opt {
             let pid = child.id();
             #[cfg(unix)]
             if let Some(pid) = pid {
@@ -223,16 +225,13 @@ impl ProcessManager {
             {
                 let _ = child.start_kill();
             }
-            let rt = &self.runtime;
-            let exit_code = rt.block_on(async {
-                tokio::select! {
-                    res = child.wait() => res.ok().and_then(|s| s.code()),
-                    _ = tokio::time::sleep(std::time::Duration::from_secs(5)) => {
-                        let _ = child.start_kill();
-                        child.wait().await.ok().and_then(|s| s.code())
-                    }
+            let exit_code = tokio::select! {
+                res = child.wait() => res.ok().and_then(|s| s.code()),
+                _ = tokio::time::sleep(std::time::Duration::from_secs(5)) => {
+                    let _ = child.start_kill();
+                    child.wait().await.ok().and_then(|s| s.code())
                 }
-            });
+            };
             {
                 let mut mp = mp_ref.lock().unwrap();
                 mp.state = ProcessState {
@@ -247,8 +246,13 @@ impl ProcessManager {
         Ok(())
     }
 
-    pub fn restart(&self, target: ProcessTarget, cfg: &crate::config::AppConfig, use_bun: bool) -> AppResult<ProcessState> {
-        self.stop(target)?;
+    pub fn stop(&self, target: ProcessTarget) -> AppResult<()> {
+        let rt = &self.runtime;
+        rt.block_on(self.stop_async(target))
+    }
+
+    pub async fn restart_async(&self, target: ProcessTarget, cfg: &crate::config::AppConfig, use_bun: bool) -> AppResult<ProcessState> {
+        self.stop_async(target).await?;
         match target {
             ProcessTarget::Server => self.start_server(cfg.server.port, &cfg.server.cwd, &cfg.server.extra_env),
             ProcessTarget::Bridge => {
@@ -257,6 +261,11 @@ impl ProcessManager {
                 self.start_bridge(&bridge_dir, use_bun)
             }
         }
+    }
+
+    pub fn restart(&self, target: ProcessTarget, cfg: &crate::config::AppConfig, use_bun: bool) -> AppResult<ProcessState> {
+        let rt = &self.runtime;
+        rt.block_on(self.restart_async(target, cfg, use_bun))
     }
 
     pub fn get_state(&self, target: ProcessTarget) -> ProcessState {
@@ -278,6 +287,27 @@ impl ProcessManager {
             let state = mp.state.clone();
             drop(mp);
             (self.on_state)(target, state);
+        }
+    }
+}
+
+#[cfg(test)]
+mod serde_tests {
+    use super::*;
+    #[test]
+    fn test_process_state_kind_serialization() {
+        let cases = [
+            (ProcessStateKind::Stopped, "Stopped"),
+            (ProcessStateKind::Starting, "Starting"),
+            (ProcessStateKind::Running, "Running"),
+            (ProcessStateKind::Stopping, "Stopping"),
+            (ProcessStateKind::Failed, "Failed"),
+        ];
+        for (kind, expected) in cases {
+            let s = serde_json::to_string(&kind).unwrap();
+            assert_eq!(s, format!("\"{}\"", expected));
+            let de: ProcessStateKind = serde_json::from_str(&s).unwrap();
+            assert_eq!(de, kind);
         }
     }
 }
