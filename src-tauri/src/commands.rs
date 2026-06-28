@@ -58,8 +58,9 @@ pub async fn stop_process(target: String, state: State<'_, AppState>) -> AppResu
 pub async fn restart_process(target: String, state: State<'_, AppState>) -> AppResult<ProcessState> {
     let target = parse_target(&target)?;
     let cfg = state.load_config()?;
+    let bridge_dir = state.config_store.bridge_install_path(&cfg);
     let deps = bridge_check_deps();
-    state.process_manager.restart_async(target, &cfg, deps.bun).await
+    state.process_manager.restart_async(target, &cfg, &bridge_dir, deps.bun).await
 }
 
 pub fn do_start_all(state: &AppState) -> AppResult<()> {

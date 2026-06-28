@@ -3,6 +3,7 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 use tokio::process::Child;
 use crate::error::{AppError, AppResult};
+use std::path::Path;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum ProcessStateKind {
@@ -254,21 +255,20 @@ impl ProcessManager {
         rt.block_on(self.stop_async(target))
     }
 
-    pub async fn restart_async(&self, target: ProcessTarget, cfg: &crate::config::AppConfig, use_bun: bool) -> AppResult<ProcessState> {
+    pub async fn restart_async(&self, target: ProcessTarget, cfg: &crate::config::AppConfig, bridge_dir: &Path, use_bun: bool) -> AppResult<ProcessState> {
         self.stop_async(target).await?;
         match target {
             ProcessTarget::Server => self.start_server(cfg.server.port, &cfg.server.cwd, &cfg.server.extra_env),
             ProcessTarget::Bridge => {
-                let store = crate::config::ConfigStore::new();
-                let bridge_dir = store.bridge_install_path(cfg);
-                self.start_bridge(&bridge_dir, use_bun)
+                crate::config::renderer::write_bridge_files(cfg, bridge_dir)?;
+                self.start_bridge(bridge_dir, use_bun)
             }
         }
     }
 
-    pub fn restart(&self, target: ProcessTarget, cfg: &crate::config::AppConfig, use_bun: bool) -> AppResult<ProcessState> {
+    pub fn restart(&self, target: ProcessTarget, cfg: &crate::config::AppConfig, bridge_dir: &Path, use_bun: bool) -> AppResult<ProcessState> {
         let rt = &self.runtime;
-        rt.block_on(self.restart_async(target, cfg, use_bun))
+        rt.block_on(self.restart_async(target, cfg, bridge_dir, use_bun))
     }
 
     pub fn get_state(&self, target: ProcessTarget) -> ProcessState {
