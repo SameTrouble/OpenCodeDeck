@@ -101,7 +101,7 @@ pub fn run() {
             let tray_icon = tauri::image::Image::from_bytes(include_bytes!("../icons/tray-icon.png")).unwrap();
             let _tray = TrayIconBuilder::new()
                 .icon(tray_icon)
-                .icon_as_template(true)
+                .icon_as_template(cfg!(target_os = "macos"))
                 .menu(&menu)
                 .tooltip("OpenCodeDeck")
                 .on_menu_event(|app, event| match event.id.as_ref() {
