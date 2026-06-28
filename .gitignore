@@ -3,3 +3,6 @@ dist
 src-tauri/target
 icon-source.png
 .DS_Store
+superpowers/
+
+docs/superpowers
