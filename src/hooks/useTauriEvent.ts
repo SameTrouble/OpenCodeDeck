@@ -7,9 +7,17 @@ export function useTauriEvent<T>(event: string, handler: (payload: T) => void) {
 
   useEffect(() => {
     let unlisten: UnlistenFn | undefined
+    let cancelled = false
     listen<T>(event, (e) => handlerRef.current(e.payload)).then((fn) => {
-      unlisten = fn
+      if (cancelled) {
+        fn()
+      } else {
+        unlisten = fn
+      }
     })
-    return () => { unlisten?.() }
+    return () => {
+      cancelled = true
+      unlisten?.()
+    }
   }, [event])
 }
