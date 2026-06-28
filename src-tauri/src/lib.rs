@@ -3,10 +3,86 @@ pub mod config;
 pub mod process;
 pub mod bridge;
 pub mod monitor;
+pub mod state;
+pub mod commands;
+
+use std::sync::{Arc, Mutex};
+use tauri::{Manager, Emitter};
 
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .setup(|app| {
+            let handle = app.handle().clone();
+
+            let log_buffer: Arc<Mutex<monitor::LogBuffer>> = Arc::new(Mutex::new(monitor::LogBuffer::new(5000)));
+            let log_buffer_for_cb = log_buffer.clone();
+
+            let on_state: process::StateCallback = Arc::new({
+                let handle = handle.clone();
+                move |target, state| {
+                    let target_str = if target == process::ProcessTarget::Server { "server" } else { "bridge" };
+                    let _ = handle.emit("state://update", serde_json::json!({ "target": target_str, "state": state }));
+                }
+            });
+
+            let on_log: process::LogCallback = Arc::new({
+                let handle = handle.clone();
+                move |entry: monitor::LogEntry| {
+                    let mut buf = log_buffer_for_cb.lock().unwrap();
+                    buf.push(entry.clone());
+                    drop(buf);
+                    let _ = handle.emit("log://entry", entry);
+                }
+            });
+
+            let on_qr: process::QrCallback = Arc::new({
+                let handle = handle.clone();
+                move |ev: monitor::stdout_parser::WechatQrEvent| {
+                    let _ = handle.emit("wechat://qrcode", ev);
+                }
+            });
+
+            let pm = process::ProcessManager::new(on_state, on_log, on_qr);
+            let app_state = state::AppState::new_with_buffer(pm, log_buffer);
+            app.manage(app_state);
+
+            let handle2 = handle.clone();
+            tauri::async_runtime::spawn(async move {
+                loop {
+                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                    let state = handle2.state::<state::AppState>();
+                    let server_state = state.process_manager.get_state(process::ProcessTarget::Server);
+                    if server_state.state == process::ProcessStateKind::Running {
+                        let cfg = state.load_config().unwrap_or_else(|_| config::ConfigStore::default_config());
+                        let checker = monitor::health::HealthChecker::new(&cfg.server.opencode_server_url);
+                        let healthy = checker.check_once();
+                        state.process_manager.set_health(process::ProcessTarget::Server, healthy);
+                        let _ = handle2.emit("health://update", serde_json::json!({ "target": "server", "healthy": healthy }));
+                    }
+                }
+            });
+
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            commands::get_state,
+            commands::start_process,
+            commands::stop_process,
+            commands::restart_process,
+            commands::start_all,
+            commands::stop_all,
+            commands::restart_all,
+            commands::get_config,
+            commands::save_config,
+            commands::check_bridge_update,
+            commands::update_bridge,
+            commands::reinstall_bridge,
+            commands::get_log_history,
+            commands::clear_logs,
+            commands::export_logs,
+            commands::check_deps,
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

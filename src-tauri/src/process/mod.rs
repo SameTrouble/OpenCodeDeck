@@ -1,4 +1,4 @@
 pub mod manager;
 pub mod supervisor;
 
-pub use manager::{ProcessManager, ProcessState, ProcessTarget, ProcessStateKind};
+pub use manager::{ProcessManager, ProcessState, ProcessTarget, ProcessStateKind, StateCallback, LogCallback, QrCallback};
