@@ -21,8 +21,20 @@ async fn read_stream<R: tokio::io::AsyncRead + Unpin>(
     on_log: LogCallback,
 ) {
     let mut lines = BufReader::new(reader).lines();
-    while let Ok(Some(line)) = lines.next_line().await {
-        on_log(LogEntry { ts: now_ts(), source: source.clone(), level: level.clone(), line });
+    loop {
+        match lines.next_line().await {
+            Ok(Some(line)) => on_log(LogEntry { ts: now_ts(), source: source.clone(), level: level.clone(), line }),
+            Ok(None) => break,
+            Err(e) => {
+                on_log(LogEntry {
+                    ts: now_ts(),
+                    source: source.clone(),
+                    level: "error".to_string(),
+                    line: format!("stream read error: {}", e),
+                });
+                break;
+            }
+        }
     }
 }
 
