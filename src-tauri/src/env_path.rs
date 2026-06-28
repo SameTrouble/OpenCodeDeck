@@ -1,10 +1,6 @@
 use std::path::PathBuf;
 
-const EXTRA_PATH_DIRS_MACOS: &[&str] = &[
-    "/opt/homebrew/bin",
-    "/opt/homebrew/sbin",
-    "/usr/local/bin",
-    "/usr/local/sbin",
+const EXTRA_PATH_DIRS_UNIX: &[&str] = &[
     "~/.bun/bin",
     "~/.opencode/bin",
     "~/.npm-global/bin",
@@ -12,6 +8,18 @@ const EXTRA_PATH_DIRS_MACOS: &[&str] = &[
     "~/.cargo/bin",
     "~/go/bin",
     "~/.nvm/versions/node",
+];
+
+const EXTRA_PATH_DIRS_MACOS: &[&str] = &[
+    "/opt/homebrew/bin",
+    "/opt/homebrew/sbin",
+    "/usr/local/bin",
+    "/usr/local/sbin",
+];
+
+const EXTRA_PATH_DIRS_LINUX: &[&str] = &[
+    "/snap/bin",
+    "/usr/local/bin",
 ];
 
 fn home_dir() -> Option<PathBuf> {
@@ -30,14 +38,21 @@ fn expand_tilde(s: &str) -> Option<PathBuf> {
 
 fn extra_paths() -> Vec<PathBuf> {
     let mut out = Vec::new();
-    for raw in EXTRA_PATH_DIRS_MACOS {
+    let raw_dirs: Vec<&'static [&'static str]> = if cfg!(target_os = "macos") {
+        vec![EXTRA_PATH_DIRS_UNIX, EXTRA_PATH_DIRS_MACOS]
+    } else if cfg!(target_os = "linux") {
+        vec![EXTRA_PATH_DIRS_UNIX, EXTRA_PATH_DIRS_LINUX]
+    } else {
+        vec![EXTRA_PATH_DIRS_UNIX]
+    };
+    for raw in raw_dirs.iter().flat_map(|d| d.iter()) {
         if let Some(p) = expand_tilde(raw) {
             if p.is_dir() {
                 out.push(p);
             }
         }
     }
-    if cfg!(target_os = "macos") {
+    if cfg!(unix) {
         if let Some(home) = home_dir() {
             let nvm_versions = home.join(".nvm/versions/node");
             if let Ok(entries) = std::fs::read_dir(&nvm_versions) {
@@ -86,6 +101,30 @@ mod tests {
         let paths = extra_paths();
         for p in &paths {
             assert!(p.is_dir(), "{} should exist", p.display());
+        }
+    }
+
+    #[test]
+    fn unix_dirs_are_shared_across_platforms() {
+        for p in EXTRA_PATH_DIRS_UNIX {
+            assert!(!p.starts_with("/opt/homebrew"), "{} should not be macOS-only", p);
+            assert!(p.starts_with("~") || *p == "~", "{} should be a home-relative path", p);
+        }
+    }
+
+    #[test]
+    fn macos_dirs_are_macos_specific() {
+        for p in EXTRA_PATH_DIRS_MACOS {
+            assert!(p.starts_with("/opt/homebrew") || p.starts_with("/usr/local"),
+                "{} should be a macOS-specific system path", p);
+        }
+    }
+
+    #[test]
+    fn linux_dirs_are_linux_specific() {
+        for p in EXTRA_PATH_DIRS_LINUX {
+            assert!(*p == "/snap/bin" || *p == "/usr/local/bin",
+                "{} should be a Linux-specific system path", p);
         }
     }
 }
