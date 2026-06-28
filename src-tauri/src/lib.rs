@@ -52,21 +52,33 @@ pub fn run() {
 
             let pm = process::ProcessManager::new(on_state, on_log, on_qr);
             let app_state = state::AppState::new_with_buffer(pm, log_buffer);
+            let config_version = app_state.config_version();
             app.manage(app_state);
 
             let handle2 = handle.clone();
-            std::thread::spawn(move || {
+            tauri::async_runtime::spawn(async move {
+                let mut last_version: u64 = 0;
+                let mut checker: Option<monitor::health::HealthChecker> = None;
+                let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
                 loop {
-                    std::thread::sleep(std::time::Duration::from_secs(5));
+                    interval.tick().await;
                     let state = handle2.state::<state::AppState>();
                     let server_state = state.process_manager.get_state(process::ProcessTarget::Server);
-                    if server_state.state == process::ProcessStateKind::Running {
-                        let cfg = state.load_config().unwrap_or_else(|_| config::ConfigStore::default_config());
-                        let checker = monitor::health::HealthChecker::new(&cfg.server.opencode_server_url);
-                        let healthy = checker.check_once();
-                        state.process_manager.set_health(process::ProcessTarget::Server, healthy);
-                        let _ = handle2.emit("health://update", serde_json::json!({ "target": "server", "healthy": healthy }));
+                    if server_state.state != process::ProcessStateKind::Running {
+                        continue;
                     }
+                    let v = config_version.load(std::sync::atomic::Ordering::Relaxed);
+                    if v != last_version || checker.is_none() {
+                        last_version = v;
+                        let cfg = state.load_config().unwrap_or_else(|_| config::ConfigStore::default_config());
+                        checker = Some(monitor::health::HealthChecker::new(&cfg.server.opencode_server_url));
+                    }
+                    let healthy = match &checker {
+                        Some(c) => c.check_once().await,
+                        None => false,
+                    };
+                    state.process_manager.set_health(process::ProcessTarget::Server, healthy);
+                    let _ = handle2.emit("health://update", serde_json::json!({ "target": "server", "healthy": healthy }));
                 }
             });
 
