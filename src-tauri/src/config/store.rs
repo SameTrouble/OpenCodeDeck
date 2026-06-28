@@ -250,7 +250,6 @@ impl ConfigStore {
 #[cfg(test)]
 mod robustness_tests {
     use super::*;
-    use std::io::Write;
 
     fn temp_store() -> (ConfigStore, tempfile::TempDir) {
         let dir = tempfile::tempdir().unwrap();
