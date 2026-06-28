@@ -266,11 +266,6 @@ impl ProcessManager {
         }
     }
 
-    pub fn restart(&self, target: ProcessTarget, cfg: &crate::config::AppConfig, bridge_dir: &Path, use_bun: bool) -> AppResult<ProcessState> {
-        let rt = &self.runtime;
-        rt.block_on(self.restart_async(target, cfg, bridge_dir, use_bun))
-    }
-
     pub fn get_state(&self, target: ProcessTarget) -> ProcessState {
         let mp = crate::process::lock_or_recover(self.target_ref(target));
         let mut state = mp.state.clone();
