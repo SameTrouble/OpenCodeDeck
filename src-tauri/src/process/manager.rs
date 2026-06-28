@@ -84,7 +84,7 @@ impl ProcessManager {
     }
 
     fn emit_state(&self, target: ProcessTarget) {
-        let state = self.target_ref(target).lock().unwrap().state.clone();
+        let state = crate::process::lock_or_recover(self.target_ref(target)).state.clone();
         (self.on_state)(target, state);
     }
 
@@ -94,7 +94,7 @@ impl ProcessManager {
 
     pub fn start_server(&self, port: u16, cwd: &str, extra_env: &std::collections::HashMap<String, String>) -> AppResult<ProcessState> {
         {
-            let mut mp = self.server.lock().unwrap();
+            let mut mp = crate::process::lock_or_recover(&self.server);
             if mp.state.state == ProcessStateKind::Running || mp.state.state == ProcessStateKind::Starting {
                 return Err(AppError::Process("server already running".into()));
             }
@@ -117,7 +117,7 @@ impl ProcessManager {
         let instant = Instant::now();
 
         {
-            let mut mp = self.server.lock().unwrap();
+            let mut mp = crate::process::lock_or_recover(&self.server);
             mp.child = Some(child);
             mp.started_at_instant = Some(instant);
             mp.state = ProcessState {
@@ -138,12 +138,12 @@ impl ProcessManager {
             super::supervisor::supervise(server_ref, ProcessTarget::Server, on_log, on_state).await;
         });
 
-        Ok(self.server.lock().unwrap().state.clone())
+        Ok(crate::process::lock_or_recover(&self.server).state.clone())
     }
 
     pub fn start_bridge(&self, bridge_dir: &std::path::Path, use_bun: bool) -> AppResult<ProcessState> {
         {
-            let mut mp = self.bridge.lock().unwrap();
+            let mut mp = crate::process::lock_or_recover(&self.bridge);
             if mp.state.state == ProcessStateKind::Running || mp.state.state == ProcessStateKind::Starting {
                 return Err(AppError::Process("bridge already running".into()));
             }
@@ -172,7 +172,7 @@ impl ProcessManager {
         let instant = Instant::now();
 
         {
-            let mut mp = self.bridge.lock().unwrap();
+            let mut mp = crate::process::lock_or_recover(&self.bridge);
             mp.child = Some(child);
             mp.started_at_instant = Some(instant);
             mp.state = ProcessState {
@@ -194,14 +194,14 @@ impl ProcessManager {
             super::supervisor::supervise_with_qr(bridge_ref, ProcessTarget::Bridge, on_log, on_state, on_qr).await;
         });
 
-        Ok(self.bridge.lock().unwrap().state.clone())
+        Ok(crate::process::lock_or_recover(&self.bridge).state.clone())
     }
 
     pub async fn stop_async(&self, target: ProcessTarget) -> AppResult<()> {
         let mp_ref = self.target_ref(target).clone();
         let _pid;
         {
-            let mut mp = mp_ref.lock().unwrap();
+            let mut mp = crate::process::lock_or_recover(&mp_ref);
             match mp.state.state {
                 ProcessStateKind::Running | ProcessStateKind::Starting => {
                     mp.state.state = ProcessStateKind::Stopping;
@@ -212,7 +212,7 @@ impl ProcessManager {
         }
         self.emit_state(target);
 
-        let child_opt = mp_ref.lock().unwrap().child.take();
+        let child_opt = crate::process::lock_or_recover(&mp_ref).child.take();
         if let Some(mut child) = child_opt {
             let pid = child.id();
             #[cfg(unix)]
@@ -233,7 +233,7 @@ impl ProcessManager {
                 }
             };
             {
-                let mut mp = mp_ref.lock().unwrap();
+                let mut mp = crate::process::lock_or_recover(&mp_ref);
                 mp.state = ProcessState {
                     state: ProcessStateKind::Stopped,
                     pid: None, started_at: None, uptime_sec: None,
@@ -269,7 +269,7 @@ impl ProcessManager {
     }
 
     pub fn get_state(&self, target: ProcessTarget) -> ProcessState {
-        let mp = self.target_ref(target).lock().unwrap();
+        let mp = crate::process::lock_or_recover(self.target_ref(target));
         let mut state = mp.state.clone();
         if state.state == ProcessStateKind::Running {
             if let Some(instant) = mp.started_at_instant {
@@ -281,7 +281,7 @@ impl ProcessManager {
 
     pub fn set_health(&self, target: ProcessTarget, healthy: bool) {
         let mp_ref = self.target_ref(target).clone();
-        let mut mp = mp_ref.lock().unwrap();
+        let mut mp = crate::process::lock_or_recover(&mp_ref);
         if mp.state.state == ProcessStateKind::Running {
             mp.state.healthy = Some(healthy);
             let state = mp.state.clone();

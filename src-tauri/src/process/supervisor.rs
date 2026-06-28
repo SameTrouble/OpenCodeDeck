@@ -37,7 +37,7 @@ async fn read_stream_with_qr<R: tokio::io::AsyncRead + Unpin>(
     let mut lines = BufReader::new(reader).lines();
     while let Ok(Some(line)) = lines.next_line().await {
         if level == "info" {
-            if let Some(ev) = parser.lock().unwrap().feed_line(&line) {
+            if let Some(ev) = crate::process::lock_or_recover(&parser).feed_line(&line) {
                 on_qr(ev);
             }
         }
@@ -52,7 +52,7 @@ pub(crate) async fn supervise(
     on_state: StateCallback,
 ) {
     let (stdout, stderr, child_ref) = {
-        let mut mp = process.lock().unwrap();
+        let mut mp = crate::process::lock_or_recover(&process);
         let child = mp.child.as_mut().expect("no child");
         let stdout = child.stdout.take();
         let stderr = child.stderr.take();
@@ -72,7 +72,7 @@ pub(crate) async fn supervise(
 
     let exit_code = {
         let child = {
-            let mut mp = child_ref.lock().unwrap();
+            let mut mp = crate::process::lock_or_recover(&child_ref);
             mp.child.take()
         };
         match child {
@@ -81,7 +81,7 @@ pub(crate) async fn supervise(
         }
     };
     {
-        let mut mp = child_ref.lock().unwrap();
+        let mut mp = crate::process::lock_or_recover(&child_ref);
         mp.state = ProcessState {
             state: ProcessStateKind::Failed,
             pid: None, started_at: None, uptime_sec: None,
@@ -102,7 +102,7 @@ pub(crate) async fn supervise_with_qr(
     on_qr: QrCallback,
 ) {
     let (stdout, stderr, child_ref) = {
-        let mut mp = process.lock().unwrap();
+        let mut mp = crate::process::lock_or_recover(&process);
         let child = mp.child.as_mut().expect("no child");
         let stdout = child.stdout.take();
         let stderr = child.stderr.take();
@@ -125,7 +125,7 @@ pub(crate) async fn supervise_with_qr(
 
     let exit_code = {
         let child = {
-            let mut mp = child_ref.lock().unwrap();
+            let mut mp = crate::process::lock_or_recover(&child_ref);
             mp.child.take()
         };
         match child {
@@ -134,7 +134,7 @@ pub(crate) async fn supervise_with_qr(
         }
     };
     {
-        let mut mp = child_ref.lock().unwrap();
+        let mut mp = crate::process::lock_or_recover(&child_ref);
         mp.state = ProcessState {
             state: ProcessStateKind::Failed,
             pid: None, started_at: None, uptime_sec: None,

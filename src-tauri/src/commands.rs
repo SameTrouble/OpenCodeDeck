@@ -128,7 +128,7 @@ pub fn reinstall_bridge(state: State<'_, AppState>) -> AppResult<()> {
 
 #[tauri::command]
 pub fn get_log_history(source: String, limit: usize, state: State<'_, AppState>) -> AppResult<Vec<LogEntry>> {
-    let buf = state.log_buffer.lock().unwrap();
+    let buf = crate::process::lock_or_recover(&state.log_buffer);
     let entries = if source == "all" {
         buf.recent_all(limit)
     } else {
@@ -139,14 +139,14 @@ pub fn get_log_history(source: String, limit: usize, state: State<'_, AppState>)
 
 #[tauri::command]
 pub fn clear_logs(source: String, state: State<'_, AppState>) -> AppResult<()> {
-    let mut buf = state.log_buffer.lock().unwrap();
+    let mut buf = crate::process::lock_or_recover(&state.log_buffer);
     buf.clear(&source);
     Ok(())
 }
 
 #[tauri::command]
 pub fn export_logs(source: String, state: State<'_, AppState>, app: tauri::AppHandle) -> AppResult<String> {
-    let buf = state.log_buffer.lock().unwrap();
+    let buf = crate::process::lock_or_recover(&state.log_buffer);
     let entries = if source == "all" { buf.recent_all(100000) } else { buf.recent(&source, 100000) };
     drop(buf);
     let content = entries.iter()

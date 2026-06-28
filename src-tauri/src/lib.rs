@@ -30,7 +30,7 @@ pub fn run() {
             let on_log: process::LogCallback = Arc::new({
                 let handle = handle.clone();
                 move |entry: monitor::LogEntry| {
-                    let mut buf = log_buffer_for_cb.lock().unwrap();
+                    let mut buf = crate::process::lock_or_recover(&log_buffer_for_cb);
                     buf.push(entry.clone());
                     drop(buf);
                     if entry.source == "bridge" && entry.level == "info" {
