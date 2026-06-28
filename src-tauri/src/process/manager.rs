@@ -212,7 +212,17 @@ impl ProcessManager {
         self.emit_state(target);
 
         if let Some(mut child) = mp_ref.lock().unwrap().child.take() {
-            let _ = child.start_kill();
+            let pid = child.id();
+            #[cfg(unix)]
+            if let Some(pid) = pid {
+                use nix::sys::signal::{kill, Signal};
+                use nix::unistd::Pid;
+                let _ = kill(Pid::from_raw(pid as i32), Signal::SIGTERM);
+            }
+            #[cfg(not(unix))]
+            {
+                let _ = child.start_kill();
+            }
             let rt = &self.runtime;
             let exit_code = rt.block_on(async {
                 tokio::select! {

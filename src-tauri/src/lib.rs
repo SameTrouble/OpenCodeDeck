@@ -12,6 +12,7 @@ use tauri::{Manager, Emitter};
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let handle = app.handle().clone();
 
@@ -32,6 +33,12 @@ pub fn run() {
                     let mut buf = log_buffer_for_cb.lock().unwrap();
                     buf.push(entry.clone());
                     drop(buf);
+                    if entry.source == "bridge" && entry.level == "info" {
+                        let lower = entry.line.to_lowercase();
+                        if lower.contains("logged in") || lower.contains("login success") || entry.line.contains("登录成功") {
+                            let _ = handle.emit("wechat://logined", ());
+                        }
+                    }
                     let _ = handle.emit("log://entry", entry);
                 }
             });
@@ -48,9 +55,9 @@ pub fn run() {
             app.manage(app_state);
 
             let handle2 = handle.clone();
-            tauri::async_runtime::spawn(async move {
+            std::thread::spawn(move || {
                 loop {
-                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                    std::thread::sleep(std::time::Duration::from_secs(5));
                     let state = handle2.state::<state::AppState>();
                     let server_state = state.process_manager.get_state(process::ProcessTarget::Server);
                     if server_state.state == process::ProcessStateKind::Running {

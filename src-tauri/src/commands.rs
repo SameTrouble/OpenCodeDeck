@@ -1,4 +1,5 @@
 use tauri::State;
+use tauri_plugin_dialog::DialogExt;
 use crate::bridge::{check_deps as bridge_check_deps, DepStatus, BridgeInstaller};
 use crate::config::{AppConfig, renderer};
 use crate::error::{AppError, AppResult};
@@ -144,7 +145,7 @@ pub fn clear_logs(source: String, state: State<'_, AppState>) -> AppResult<()> {
 }
 
 #[tauri::command]
-pub fn export_logs(source: String, state: State<'_, AppState>) -> AppResult<String> {
+pub fn export_logs(source: String, state: State<'_, AppState>, app: tauri::AppHandle) -> AppResult<String> {
     let buf = state.log_buffer.lock().unwrap();
     let entries = if source == "all" { buf.recent_all(100000) } else { buf.recent(&source, 100000) };
     drop(buf);
@@ -152,10 +153,17 @@ pub fn export_logs(source: String, state: State<'_, AppState>) -> AppResult<Stri
         .map(|e| format!("[{}] [{}] [{}] {}", e.ts, e.source, e.level, e.line))
         .collect::<Vec<_>>()
         .join("\n");
-    let path = dirs::download_dir()
+    let default_path = dirs::download_dir()
         .or_else(|| dirs::home_dir())
-        .unwrap_or_default()
-        .join(format!("opencodedeck-logs-{}.txt", source));
+        .unwrap_or_default();
+    let path = app.dialog().file()
+        .set_directory(&default_path)
+        .set_file_name(format!("opencodedeck-logs-{}.txt", source))
+        .blocking_save_file();
+    let path = match path {
+        Some(p) => p.into_path().unwrap_or_else(|_| default_path.join(format!("opencodedeck-logs-{}.txt", source))),
+        None => return Err(AppError::Process("export cancelled".into())),
+    };
     std::fs::write(&path, content)?;
     Ok(path.to_string_lossy().to_string())
 }
