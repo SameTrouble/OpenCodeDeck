@@ -7,8 +7,9 @@ pub struct OpencodeConfigStore {
 
 impl OpencodeConfigStore {
     pub fn new() -> Self {
-        let config_dir = dirs::config_dir()
+        let config_dir = dirs::home_dir()
             .unwrap_or_else(|| PathBuf::from("."))
+            .join(".config")
             .join("opencode");
         Self { config_dir }
     }
