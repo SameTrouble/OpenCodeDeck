@@ -1,10 +1,12 @@
 use std::sync::{Arc, Mutex, atomic::AtomicU64};
 use crate::config::{ConfigStore, AppConfig};
+use crate::opencode_config::OpencodeConfigStore;
 use crate::process::ProcessManager;
 use crate::monitor::LogBuffer;
 
 pub struct AppState {
     pub config_store: ConfigStore,
+    pub opencode_store: OpencodeConfigStore,
     pub process_manager: ProcessManager,
     pub log_buffer: Arc<Mutex<LogBuffer>>,
     pub config_version: Arc<AtomicU64>,
@@ -14,6 +16,7 @@ impl AppState {
     pub fn new_with_buffer(process_manager: ProcessManager, log_buffer: Arc<Mutex<LogBuffer>>) -> Self {
         Self {
             config_store: ConfigStore::new(),
+            opencode_store: OpencodeConfigStore::new(),
             process_manager,
             log_buffer,
             config_version: Arc::new(AtomicU64::new(0)),

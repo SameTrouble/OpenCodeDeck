@@ -6,6 +6,7 @@ pub mod monitor;
 pub mod state;
 pub mod commands;
 pub mod env_path;
+pub mod opencode_config;
 
 use std::sync::{Arc, Mutex};
 use tauri::{Manager, Emitter};
@@ -276,6 +277,8 @@ pub fn run() {
             commands::clear_logs,
             commands::export_logs,
             commands::check_deps,
+            opencode_config::commands::get_opencode_config,
+            opencode_config::commands::save_opencode_config,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
