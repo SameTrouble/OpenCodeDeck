@@ -38,6 +38,18 @@ fn parse_target(target: &str) -> AppResult<ProcessTarget> {
     }
 }
 
+pub async fn do_start_bridge(state: &AppState) -> AppResult<()> {
+    let cfg = state.load_config()?;
+    let installer = BridgeInstaller::new(state.config_store.bridge_install_path(&cfg));
+    if !installer.is_installed() {
+        installer.install().await?;
+    }
+    renderer::write_bridge_files(&cfg, installer.path())?;
+    let deps = bridge_check_deps();
+    state.process_manager.start_bridge(installer.path(), deps.bun)?;
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn start_process(target: String, server_id: Option<String>, state: State<'_, AppState>) -> AppResult<ProcessState> {
     let target = parse_target(&target)?;
@@ -48,13 +60,8 @@ pub async fn start_process(target: String, server_id: Option<String>, state: Sta
             state.process_manager.start_server(&id, &cfg)
         }
         ProcessTarget::Bridge => {
-            let installer = BridgeInstaller::new(state.config_store.bridge_install_path(&cfg));
-            if !installer.is_installed() {
-                installer.install().await?;
-            }
-            renderer::write_bridge_files(&cfg, installer.path())?;
-            let deps = bridge_check_deps();
-            state.process_manager.start_bridge(installer.path(), deps.bun)
+            do_start_bridge(state.inner()).await?;
+            Ok(state.process_manager.get_state(ProcessTarget::Bridge))
         }
     }
 }

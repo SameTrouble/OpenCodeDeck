@@ -10,6 +10,76 @@ pub mod env_path;
 use std::sync::{Arc, Mutex};
 use tauri::{Manager, Emitter};
 
+fn state_symbol(state: &process::ProcessStateKind) -> &'static str {
+    use process::ProcessStateKind;
+    match state {
+        ProcessStateKind::Running => "●",
+        ProcessStateKind::Stopped => "○",
+        ProcessStateKind::Starting => "◐",
+        ProcessStateKind::Stopping => "◐",
+        ProcessStateKind::Failed => "✕",
+    }
+}
+
+fn state_label(state: &process::ProcessStateKind) -> &'static str {
+    use process::ProcessStateKind;
+    match state {
+        ProcessStateKind::Running => "运行中",
+        ProcessStateKind::Stopped => "已停止",
+        ProcessStateKind::Starting => "启动中",
+        ProcessStateKind::Stopping => "停止中",
+        ProcessStateKind::Failed => "异常",
+    }
+}
+
+fn server_menu_id(server_id: &str) -> String {
+    format!("server:{}", server_id)
+}
+
+fn build_tray_menu<M: tauri::Manager<tauri::Wry>>(
+    app: &M,
+    cfg: &config::AppConfig,
+    pm: &process::ProcessManager,
+) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
+    use tauri::menu::{IsMenuItem, Menu, MenuItem, PredefinedMenuItem};
+    let mut items: Vec<Box<dyn IsMenuItem<tauri::Wry>>> = Vec::new();
+    for s in &cfg.servers {
+        let ps = pm.get_server_state(&s.id);
+        let text = format!("{} {}: {}", state_symbol(&ps.state), s.name, state_label(&ps.state));
+        let item = MenuItem::with_id(app, server_menu_id(&s.id), text, true, None::<&str>)?;
+        items.push(Box::new(item));
+    }
+    let bridge_ps = pm.get_state(process::ProcessTarget::Bridge);
+    let bridge_text = format!("{} bridge: {}", state_symbol(&bridge_ps.state), state_label(&bridge_ps.state));
+    let bridge_item = MenuItem::with_id(app, "bridge", bridge_text, true, None::<&str>)?;
+    items.push(Box::new(bridge_item));
+    let sep1 = PredefinedMenuItem::separator(app)?;
+    items.push(Box::new(sep1));
+    let show_item = MenuItem::with_id(app, "show", "显示主窗口", true, None::<&str>)?;
+    items.push(Box::new(show_item));
+    let sep2 = PredefinedMenuItem::separator(app)?;
+    items.push(Box::new(sep2));
+    let quit_item = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
+    items.push(Box::new(quit_item));
+    let refs: Vec<&dyn IsMenuItem<tauri::Wry>> = items.iter().map(|b| b.as_ref()).collect();
+    Menu::with_items(app, &refs)
+}
+
+fn rebuild_tray_menu(handle: &tauri::AppHandle) {
+    let state = handle.state::<state::AppState>();
+    let cfg = state.load_config().unwrap_or_else(|_| config::ConfigStore::default_config());
+    match build_tray_menu(handle, &cfg, &state.process_manager) {
+        Ok(menu) => {
+            if let Some(tray) = handle.tray_by_id("main") {
+                if let Err(e) = tray.set_menu(Some(menu)) {
+                    eprintln!("tray set_menu error: {}", e);
+                }
+            }
+        }
+        Err(e) => eprintln!("build_tray_menu error: {}", e),
+    }
+}
+
 pub fn run() {
     env_path::augment_path();
     tauri::Builder::default()
@@ -30,6 +100,7 @@ pub fn run() {
                         "serverId": server_id,
                         "state": state
                     }));
+                    rebuild_tray_menu(&handle);
                 }
             });
 
@@ -78,6 +149,7 @@ pub fn run() {
                         for s in &cfg.servers {
                             checkers.insert(s.id.clone(), monitor::health::HealthChecker::new(&s.url));
                         }
+                        rebuild_tray_menu(&handle2);
                     }
                     for (id, ps) in &server_states {
                         if ps.state != process::ProcessStateKind::Running {
@@ -98,15 +170,13 @@ pub fn run() {
             });
 
             use tauri::tray::{TrayIconBuilder, MouseButton, MouseButtonState, TrayIconEvent};
-            use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 
-            let quit_item = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
-            let show_item = MenuItem::with_id(app, "show", "显示主窗口", true, None::<&str>)?;
-            let sep = PredefinedMenuItem::separator(app)?;
-            let menu = Menu::with_items(app, &[&show_item, &sep, &quit_item])?;
+            let app_state_for_menu = app.state::<state::AppState>();
+            let cfg_for_menu = app_state_for_menu.load_config().unwrap_or_else(|_| config::ConfigStore::default_config());
+            let menu = build_tray_menu(app, &cfg_for_menu, &app_state_for_menu.process_manager)?;
 
             let tray_icon = tauri::image::Image::from_bytes(include_bytes!("../icons/tray-icon.png")).unwrap();
-            let _tray = TrayIconBuilder::new()
+            let _tray = TrayIconBuilder::with_id("main")
                 .icon(tray_icon)
                 .icon_as_template(cfg!(target_os = "macos"))
                 .menu(&menu)
@@ -125,6 +195,42 @@ pub fn run() {
                             state.process_manager.stop_all_servers().await;
                             let _ = state.process_manager.stop_async(process::ProcessTarget::Bridge).await;
                             handle.exit(0);
+                        });
+                    }
+                    id if id.starts_with("server:") => {
+                        let server_id = id["server:".len()..].to_string();
+                        let handle = app.clone();
+                        tauri::async_runtime::spawn(async move {
+                            let state = handle.state::<state::AppState>();
+                            let ps = state.process_manager.get_server_state(&server_id);
+                            use process::ProcessStateKind;
+                            match ps.state {
+                                ProcessStateKind::Stopped | ProcessStateKind::Failed => {
+                                    let cfg = state.load_config().unwrap_or_else(|_| config::ConfigStore::default_config());
+                                    let _ = state.process_manager.start_server(&server_id, &cfg);
+                                }
+                                ProcessStateKind::Running => {
+                                    let _ = state.process_manager.stop_server(&server_id).await;
+                                }
+                                ProcessStateKind::Starting | ProcessStateKind::Stopping => {}
+                            }
+                        });
+                    }
+                    "bridge" => {
+                        let handle = app.clone();
+                        tauri::async_runtime::spawn(async move {
+                            let state = handle.state::<state::AppState>();
+                            let ps = state.process_manager.get_state(process::ProcessTarget::Bridge);
+                            use process::ProcessStateKind;
+                            match ps.state {
+                                ProcessStateKind::Stopped | ProcessStateKind::Failed => {
+                                    let _ = commands::do_start_bridge(state.inner()).await;
+                                }
+                                ProcessStateKind::Running => {
+                                    let _ = state.process_manager.stop_async(process::ProcessTarget::Bridge).await;
+                                }
+                                ProcessStateKind::Starting | ProcessStateKind::Stopping => {}
+                            }
                         });
                     }
                     _ => {}
