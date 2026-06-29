@@ -22,6 +22,18 @@ const EXTRA_PATH_DIRS_LINUX: &[&str] = &[
     "/usr/local/bin",
 ];
 
+const EXTRA_PATH_DIRS_WINDOWS: &[&str] = &[
+    r"~\scoop\shims",
+    r"~\AppData\Roaming\npm",
+    r"~\AppData\Local\Volta\bin",
+    r"~\AppData\Local\.volta\bin",
+    r"~\AppData\Local\nvim\bin",
+    r"~\.bun\bin",
+    r"~\.opencode\bin",
+    r"~\.cargo\bin",
+    r"~\.local\bin",
+];
+
 fn home_dir() -> Option<PathBuf> {
     dirs::home_dir()
 }
@@ -42,6 +54,8 @@ fn extra_paths() -> Vec<PathBuf> {
         vec![EXTRA_PATH_DIRS_UNIX, EXTRA_PATH_DIRS_MACOS]
     } else if cfg!(target_os = "linux") {
         vec![EXTRA_PATH_DIRS_UNIX, EXTRA_PATH_DIRS_LINUX]
+    } else if cfg!(target_os = "windows") {
+        vec![EXTRA_PATH_DIRS_WINDOWS]
     } else {
         vec![EXTRA_PATH_DIRS_UNIX]
     };
@@ -125,6 +139,13 @@ mod tests {
         for p in EXTRA_PATH_DIRS_LINUX {
             assert!(*p == "/snap/bin" || *p == "/usr/local/bin",
                 "{} should be a Linux-specific system path", p);
+        }
+    }
+
+    #[test]
+    fn windows_dirs_are_windows_specific() {
+        for p in EXTRA_PATH_DIRS_WINDOWS {
+            assert!(p.starts_with(r"~\"), "{} should be a Windows home-relative path", p);
         }
     }
 }
