@@ -26,7 +26,7 @@ export function Config() {
     })
   }
   const addServer = () => {
-    const newServer: ServerConfig = { id: genId(), name: "新 server", url: "http://127.0.0.1:4097", cwd: "", extraEnv: {} }
+    const newServer: ServerConfig = { id: genId(), name: "新 server", hostname: "127.0.0.1", port: 4097, cwd: "", extraEnv: {} }
     setConfig({ ...config, servers: [...config.servers, newServer] })
   }
   const removeServer = (id: string) => {
@@ -45,14 +45,18 @@ export function Config() {
                 <Label className="text-xs text-muted-foreground">ID: {s.id}</Label>
                 <Button size="sm" variant="destructive" onClick={() => removeServer(s.id)}>删除</Button>
               </div>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 <div className="space-y-1">
                   <Label>名称</Label>
                   <Input value={s.name} onChange={(e) => updateServer(s.id, { name: e.target.value })} />
                 </div>
                 <div className="space-y-1">
-                  <Label>URL</Label>
-                  <Input value={s.url} onChange={(e) => updateServer(s.id, { url: e.target.value })} />
+                  <Label>hostname</Label>
+                  <Input value={s.hostname} onChange={(e) => updateServer(s.id, { hostname: e.target.value })} />
+                </div>
+                <div className="space-y-1">
+                  <Label>port</Label>
+                  <Input type="number" value={s.port} onChange={(e) => updateServer(s.id, { port: Number(e.target.value) })} />
                 </div>
               </div>
               <div className="space-y-1">

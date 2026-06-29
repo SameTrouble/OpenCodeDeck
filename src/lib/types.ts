@@ -25,7 +25,8 @@ export type ProcessTarget = "server" | "bridge"
 export interface ServerConfig {
   id: string
   name: string
-  url: string
+  hostname: string
+  port: number
   cwd: string
   extraEnv: Record<string, string>
 }
