@@ -9,15 +9,23 @@ export interface ProcessState {
   healthy: boolean | null
 }
 
+export interface ServerStateItem {
+  id: string
+  name: string
+  state: ProcessState
+}
+
 export interface FullState {
-  server: ProcessState
+  servers: ServerStateItem[]
   bridge: ProcessState
 }
 
 export type ProcessTarget = "server" | "bridge"
 
 export interface ServerConfig {
-  port: number
+  id: string
+  name: string
+  url: string
   cwd: string
   extraEnv: Record<string, string>
 }
@@ -41,6 +49,7 @@ export interface BridgeConfig {
   dataDir: string
   progress: ProgressConfig
   launcher: LauncherConfig
+  boundServerId: string
 }
 
 export interface FeishuConfig {
@@ -84,7 +93,7 @@ export interface ChannelsConfig {
 
 export interface AppConfig {
   version: number
-  server: ServerConfig
+  servers: ServerConfig[]
   bridge: BridgeConfig
   channels: ChannelsConfig
 }
