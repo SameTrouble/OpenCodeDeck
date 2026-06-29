@@ -7,7 +7,10 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "build:mac": "tauri build --bundles dmg",
+    "build:linux": "tauri build --bundles deb",
+    "build:windows": "tauri build --bundles nsis"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.17",
