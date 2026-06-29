@@ -22,10 +22,9 @@ interface ProcessCardProps {
   name?: string
   servers?: ServerConfig[]
   boundServerId?: string
-  onConfigUpdate?: () => void
 }
 
-export function ProcessCard({ target, state, serverId, name, servers, boundServerId, onConfigUpdate }: ProcessCardProps) {
+export function ProcessCard({ target, state, serverId, name, servers, boundServerId }: ProcessCardProps) {
   const label = target === "server" ? (name ?? "server") : "bridge"
   const isRunning = state.state === "Running"
   const isBusy = state.state === "Starting" || state.state === "Stopping"
@@ -38,7 +37,6 @@ export function ProcessCard({ target, state, serverId, name, servers, boundServe
     }
   }
   const handleBind = (newId: string) => bindBridge(newId)
-    .then(() => onConfigUpdate?.())
     .catch((e) => toast.error(`绑定失败: ${formatError(e)}`))
 
   return (
