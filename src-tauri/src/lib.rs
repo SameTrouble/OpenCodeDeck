@@ -147,7 +147,7 @@ pub fn run() {
                         let cfg = state.load_config().unwrap_or_else(|_| config::ConfigStore::default_config());
                         checkers.clear();
                         for s in &cfg.servers {
-                            checkers.insert(s.id.clone(), monitor::health::HealthChecker::new(&s.url));
+                            checkers.insert(s.id.clone(), monitor::health::HealthChecker::new(&format!("http://{}:{}", s.hostname, s.port)));
                         }
                         rebuild_tray_menu(&handle2);
                     }
@@ -207,7 +207,7 @@ pub fn run() {
                             match ps.state {
                                 ProcessStateKind::Stopped | ProcessStateKind::Failed => {
                                     let cfg = state.load_config().unwrap_or_else(|_| config::ConfigStore::default_config());
-                                    let _ = state.process_manager.start_server(&server_id, &cfg);
+                                    let _ = state.process_manager.start_server(&server_id, &cfg, &handle);
                                 }
                                 ProcessStateKind::Running => {
                                     let _ = state.process_manager.stop_server(&server_id).await;

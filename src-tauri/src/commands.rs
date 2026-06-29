@@ -49,13 +49,13 @@ pub async fn do_start_bridge(state: &AppState) -> AppResult<()> {
 }
 
 #[tauri::command]
-pub async fn start_process(target: String, server_id: Option<String>, state: State<'_, AppState>) -> AppResult<ProcessState> {
+pub async fn start_process(target: String, server_id: Option<String>, state: State<'_, AppState>, app_handle: tauri::AppHandle) -> AppResult<ProcessState> {
     let target = parse_target(&target)?;
     let cfg = state.load_config()?;
     match target {
         ProcessTarget::Server => {
             let id = server_id.ok_or_else(|| AppError::Process("server_id required for server target".into()))?;
-            state.process_manager.start_server(&id, &cfg)
+            state.process_manager.start_server(&id, &cfg, &app_handle)
         }
         ProcessTarget::Bridge => {
             do_start_bridge(state.inner()).await?;
@@ -77,13 +77,13 @@ pub async fn stop_process(target: String, server_id: Option<String>, state: Stat
 }
 
 #[tauri::command]
-pub async fn restart_process(target: String, server_id: Option<String>, state: State<'_, AppState>) -> AppResult<ProcessState> {
+pub async fn restart_process(target: String, server_id: Option<String>, state: State<'_, AppState>, app_handle: tauri::AppHandle) -> AppResult<ProcessState> {
     let target = parse_target(&target)?;
     let cfg = state.load_config()?;
     match target {
         ProcessTarget::Server => {
             let id = server_id.ok_or_else(|| AppError::Process("server_id required for server target".into()))?;
-            state.process_manager.restart_server(&id, &cfg).await
+            state.process_manager.restart_server(&id, &cfg, &app_handle).await
         }
         ProcessTarget::Bridge => {
             let bridge_dir = state.config_store.bridge_install_path(&cfg);
