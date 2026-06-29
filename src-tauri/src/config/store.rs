@@ -7,10 +7,41 @@ use crate::error::AppResult;
 pub struct ServerConfig {
     pub id: String,
     pub name: String,
-    pub url: String,
+    #[serde(default = "default_hostname")]
+    pub hostname: String,
+    #[serde(default)]
+    pub port: u16,
     pub cwd: String,
     #[serde(default)]
     pub extra_env: std::collections::HashMap<String, String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+}
+
+fn default_hostname() -> String { "127.0.0.1".to_string() }
+
+/// 解析旧 url 字段回填 hostname/port，迁移后清空 url。
+pub fn migrate_server_urls(cfg: &mut AppConfig) {
+    for s in &mut cfg.servers {
+        if s.port == 0 {
+            if let Some(url) = s.url.take() {
+                let after_scheme = url.split("://").nth(1).unwrap_or(&url);
+                let host_port = after_scheme.split('/').next().unwrap_or(after_scheme);
+                let (host, port_str) = match host_port.rsplit_once(':') {
+                    Some((h, p)) => (h, p),
+                    None => (host_port, ""),
+                };
+                s.hostname = if host.is_empty() { "127.0.0.1".to_string() } else { host.to_string() };
+                if let Ok(p) = port_str.parse::<u16>() {
+                    s.port = p;
+                } else if s.port == 0 {
+                    s.port = 4097;
+                }
+            } else if s.port == 0 {
+                s.port = 4097;
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -216,9 +247,11 @@ fn migrate_legacy(legacy: LegacyAppConfig) -> AppConfig {
         servers: vec![ServerConfig {
             id: server_id.clone(),
             name: "默认".to_string(),
-            url: format!("http://127.0.0.1:{}", legacy.server.port),
+            hostname: "127.0.0.1".to_string(),
+            port: legacy.server.port,
             cwd: legacy.server.cwd,
             extra_env: legacy.server.extra_env,
+            url: None,
         }],
         bridge: BridgeConfig {
             install_path: legacy.bridge.install_path,
@@ -256,9 +289,11 @@ impl ConfigStore {
             servers: vec![ServerConfig {
                 id: "default".to_string(),
                 name: "默认".to_string(),
-                url: "http://127.0.0.1:4097".to_string(),
+                hostname: "127.0.0.1".to_string(),
+                port: 4097,
                 cwd: dirs::home_dir().map(|p| p.to_string_lossy().to_string()).unwrap_or_default(),
                 extra_env: Default::default(),
+                url: None,
             }],
             bridge: BridgeConfig {
                 install_path: None,
@@ -280,7 +315,12 @@ impl ConfigStore {
             return Ok(cfg);
         }
         let content = std::fs::read_to_string(&path)?;
-        if let Ok(cfg) = serde_json::from_str::<AppConfig>(&content) {
+        if let Ok(mut cfg) = serde_json::from_str::<AppConfig>(&content) {
+            let needs_migrate = cfg.servers.iter().any(|s| s.port == 0 && s.url.is_some());
+            if needs_migrate {
+                migrate_server_urls(&mut cfg);
+                let _ = self.save(&cfg);
+            }
             return Ok(cfg);
         }
         if let Ok(legacy) = serde_json::from_str::<LegacyAppConfig>(&content) {
@@ -334,7 +374,8 @@ mod robustness_tests {
         std::fs::write(store.config_path(), "{ not valid json").unwrap();
 
         let cfg = store.load().unwrap();
-        assert_eq!(cfg.servers[0].url, "http://127.0.0.1:4097");
+        assert_eq!(cfg.servers[0].hostname, "127.0.0.1");
+        assert_eq!(cfg.servers[0].port, 4097);
 
         // corrupt file was backed up
         let mut entries = std::fs::read_dir(store.config_dir()).unwrap()
@@ -392,7 +433,8 @@ mod robustness_tests {
 
         let cfg = store.load().unwrap();
         assert_eq!(cfg.servers.len(), 1, "legacy server should migrate to one-element servers array");
-        assert_eq!(cfg.servers[0].url, "http://127.0.0.1:4097");
+        assert_eq!(cfg.servers[0].hostname, "127.0.0.1");
+        assert_eq!(cfg.servers[0].port, 4097);
         assert_eq!(cfg.servers[0].cwd, "/home/user");
         assert_eq!(cfg.servers[0].id, "default");
         assert_eq!(cfg.bridge.bound_server_id, "default");
@@ -405,5 +447,50 @@ mod robustness_tests {
         assert!(!cfg.bridge.bound_server_id.is_empty(), "default bound_server_id should be set");
         let default_id = &cfg.servers[0].id;
         assert_eq!(&cfg.bridge.bound_server_id, default_id, "default bound_server_id must point to first server");
+    }
+
+    #[test]
+    fn migrate_server_urls_parses_legacy_url_field() {
+        let (store, _dir) = temp_store();
+        std::fs::create_dir_all(store.config_dir()).unwrap();
+        let with_url = serde_json::json!({
+            "version": 1,
+            "servers": [{
+                "id": "default",
+                "name": "默认",
+                "url": "http://0.0.0.0:5050",
+                "cwd": "/tmp",
+                "extraEnv": {}
+            }],
+            "bridge": {
+                "installPath": null,
+                "defaultAgent": "build",
+                "dataDir": "./data",
+                "progress": { "debounceMs": 500, "maxDebounceMs": 3000 },
+                "launcher": {
+                    "enabled": true,
+                    "autoStartServer": true,
+                    "serverCommand": "opencode serve",
+                    "serverStartTimeoutMs": 30000,
+                    "probeTimeoutMs": 4000
+                },
+                "boundServerId": "default"
+            },
+            "channels": {}
+        });
+        std::fs::write(store.config_path(), with_url.to_string()).unwrap();
+
+        let cfg = store.load().unwrap();
+        assert_eq!(cfg.servers[0].hostname, "0.0.0.0");
+        assert_eq!(cfg.servers[0].port, 5050);
+        assert!(cfg.servers[0].url.is_none(), "url field should be cleared after migration");
+    }
+
+    #[test]
+    fn default_config_has_hostname_and_port() {
+        let cfg = ConfigStore::default_config();
+        assert_eq!(cfg.servers[0].hostname, "127.0.0.1");
+        assert_eq!(cfg.servers[0].port, 4097);
+        assert!(cfg.servers[0].url.is_none());
     }
 }
