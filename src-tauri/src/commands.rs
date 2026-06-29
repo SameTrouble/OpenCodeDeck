@@ -17,12 +17,10 @@ pub struct FullState {
 #[tauri::command]
 pub fn get_state(state: State<'_, AppState>) -> AppResult<FullState> {
     let cfg = state.load_config()?;
-    let server_states = state.process_manager.get_all_server_states();
-    let servers = server_states.into_iter().map(|(id, ps)| {
-        let name = cfg.servers.iter().find(|s| s.id == id)
-            .map(|s| s.name.clone())
-            .unwrap_or_else(|| id.clone());
-        ServerStateItem { id, name, state: ps }
+    let servers = cfg.servers.iter().map(|s| ServerStateItem {
+        id: s.id.clone(),
+        name: s.name.clone(),
+        state: state.process_manager.get_server_state(&s.id),
     }).collect();
     Ok(FullState {
         servers,
