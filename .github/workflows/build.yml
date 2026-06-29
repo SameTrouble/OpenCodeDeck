@@ -2,10 +2,7 @@ name: build
 
 on:
   push:
-    branches: [main, master]
     tags: ['v*']
-  pull_request:
-    branches: [main, master]
 
 jobs:
   build:
@@ -19,9 +16,6 @@ jobs:
           - os: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
             bundle: deb
-          - os: macos-13
-            target: x86_64-apple-darwin
-            bundle: app,dmg
           - os: macos-14
             target: aarch64-apple-darwin
             bundle: app,dmg
