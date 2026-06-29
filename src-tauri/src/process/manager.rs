@@ -53,11 +53,12 @@ pub(crate) struct ManagedProcess {
     pub child: Option<Child>,
     pub started_at_instant: Option<Instant>,
     pub stopping: bool,
+    pub tracker: Option<crate::process::platform::ProcessTracker>,
 }
 
 impl ManagedProcess {
     fn new() -> Self {
-        Self { state: ProcessState::default(), child: None, started_at_instant: None, stopping: false }
+        Self { state: ProcessState::default(), child: None, started_at_instant: None, stopping: false, tracker: None }
     }
 }
 
@@ -151,6 +152,7 @@ impl ProcessManager {
                 child: None,
                 started_at_instant: None,
                 stopping: false,
+                tracker: None,
             });
         }
         self.emit_state(ProcessTarget::Server, Some(server_id.to_string()));
@@ -166,6 +168,7 @@ impl ProcessManager {
         let _enter_guard = self.runtime.enter();
         let child = cmd.spawn().map_err(|e| crate::error::AppError::Process(format!("failed to spawn opencode: {}", e)))?;
         let pid = child.id();
+        let tracker = crate::process::platform::ProcessTracker::new_for_child(&child);
         let now = Self::now_ts();
         let instant = Instant::now();
 
@@ -173,6 +176,7 @@ impl ProcessManager {
             let mut servers = crate::process::lock_or_recover(&self.servers);
             if let Some(mp) = servers.get_mut(server_id) {
                 mp.child = Some(child);
+                mp.tracker = tracker;
                 mp.started_at_instant = Some(instant);
                 mp.state = ProcessState {
                     state: ProcessStateKind::Running,
@@ -222,15 +226,14 @@ impl ProcessManager {
         };
         if let Some(mut child) = child_opt {
             let pid = child.id();
-            #[cfg(unix)]
             if let Some(pid) = pid {
-                use nix::sys::signal::{kill, Signal};
-                use nix::unistd::Pid;
-                let _ = kill(Pid::from_raw(pid as i32), Signal::SIGTERM);
+                crate::process::platform::graceful_terminate(pid);
             }
-            #[cfg(not(unix))]
             {
-                let _ = child.start_kill();
+                let mut servers = crate::process::lock_or_recover(&mp_ref);
+                if let Some(mp) = servers.get_mut(server_id) {
+                    mp.tracker.take();
+                }
             }
             let exit_code = tokio::select! {
                 res = child.wait() => res.ok().and_then(|s| s.code()),
@@ -341,12 +344,14 @@ impl ProcessManager {
         let _enter_guard = self.runtime.enter();
         let child = cmd.spawn().map_err(|e| AppError::Process(format!("failed to spawn bridge: {}", e)))?;
         let pid = child.id();
+        let tracker = crate::process::platform::ProcessTracker::new_for_child(&child);
         let now = Self::now_ts();
         let instant = Instant::now();
 
         {
             let mut mp = crate::process::lock_or_recover(&self.bridge);
             mp.child = Some(child);
+            mp.tracker = tracker;
             mp.started_at_instant = Some(instant);
             mp.state = ProcessState {
                 state: ProcessStateKind::Running,
@@ -389,19 +394,16 @@ impl ProcessManager {
         }
         self.emit_state(target, None);
 
-        let child_opt = crate::process::lock_or_recover(&mp_ref).child.take();
+        let (child_opt, tracker_opt) = {
+            let mut mp = crate::process::lock_or_recover(&mp_ref);
+            (mp.child.take(), mp.tracker.take())
+        };
         if let Some(mut child) = child_opt {
             let pid = child.id();
-            #[cfg(unix)]
             if let Some(pid) = pid {
-                use nix::sys::signal::{kill, Signal};
-                use nix::unistd::Pid;
-                let _ = kill(Pid::from_raw(pid as i32), Signal::SIGTERM);
+                crate::process::platform::graceful_terminate(pid);
             }
-            #[cfg(not(unix))]
-            {
-                let _ = child.start_kill();
-            }
+            drop(tracker_opt);
             let exit_code = tokio::select! {
                 res = child.wait() => res.ok().and_then(|s| s.code()),
                 _ = tokio::time::sleep(std::time::Duration::from_secs(5)) => {
