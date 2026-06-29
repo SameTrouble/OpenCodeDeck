@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core"
 import type { AppConfig, DepStatus, FullState, LogEntry, ProcessState, ProcessTarget } from "./types"
+import type { OpenCodeConfig } from "./opencode-types"
 
 export const getState = () => invoke<FullState>("get_state")
 export const startProcess = (target: ProcessTarget, serverId?: string) =>
@@ -20,3 +21,5 @@ export const getLogHistory = (source: "server" | "bridge" | "all", limit: number
 export const clearLogs = (source: string) => invoke<void>("clear_logs", { source })
 export const exportLogs = (source: string) => invoke<string>("export_logs", { source })
 export const checkDeps = () => invoke<DepStatus>("check_deps")
+export const getOpencodeConfig = () => invoke<OpenCodeConfig>("get_opencode_config")
+export const saveOpencodeConfig = (config: OpenCodeConfig) => invoke<void>("save_opencode_config", { config })
