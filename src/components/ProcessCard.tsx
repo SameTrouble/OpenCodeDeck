@@ -1,9 +1,8 @@
-import { Button } from "@/components/ui/button"
+import { Switch } from "@/components/ui/switch"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Play, Square, RotateCcw } from "lucide-react"
 import type { ProcessState, ProcessTarget, ServerConfig } from "@/lib/types"
-import { startProcess, stopProcess, restartProcess, bindBridge } from "@/lib/tauri"
+import { startProcess, stopProcess, bindBridge } from "@/lib/tauri"
 import { toast } from "sonner"
 import { formatError } from "@/lib/utils"
 
@@ -29,9 +28,13 @@ export function ProcessCard({ target, state, serverId, name, servers, boundServe
   const isRunning = state.state === "Running"
   const isBusy = state.state === "Starting" || state.state === "Stopping"
 
-  const handleStart = () => startProcess(target, serverId).catch((e) => toast.error(`启动失败: ${formatError(e)}`))
-  const handleStop = () => stopProcess(target, serverId).catch((e) => toast.error(`停止失败: ${formatError(e)}`))
-  const handleRestart = () => restartProcess(target, serverId).catch((e) => toast.error(`重启失败: ${formatError(e)}`))
+  const handleToggle = (checked: boolean) => {
+    if (checked) {
+      startProcess(target, serverId).catch((e) => toast.error(`启动失败: ${formatError(e)}`))
+    } else {
+      stopProcess(target, serverId).catch((e) => toast.error(`停止失败: ${formatError(e)}`))
+    }
+  }
   const handleBind = (newId: string) => bindBridge(newId).catch((e) => toast.error(`绑定失败: ${formatError(e)}`))
 
   return (
@@ -64,16 +67,9 @@ export function ProcessCard({ target, state, serverId, name, servers, boundServe
             </select>
           </div>
         )}
-        <div className="mt-3 flex gap-2">
-          <Button size="sm" variant="outline" onClick={handleStart} disabled={isRunning || isBusy}>
-            <Play className="mr-1 h-3 w-3" /> 启动
-          </Button>
-          <Button size="sm" variant="outline" onClick={handleStop} disabled={!isRunning || isBusy}>
-            <Square className="mr-1 h-3 w-3" /> 停止
-          </Button>
-          <Button size="sm" variant="outline" onClick={handleRestart} disabled={isBusy}>
-            <RotateCcw className="mr-1 h-3 w-3" /> 重启
-          </Button>
+        <div className="mt-3 flex items-center gap-2">
+          <Switch checked={isRunning} disabled={isBusy} onCheckedChange={handleToggle} />
+          <span className="text-xs text-muted-foreground">{isRunning ? "运行中" : "已停止"}</span>
         </div>
       </CardContent>
     </Card>
