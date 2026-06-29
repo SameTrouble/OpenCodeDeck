@@ -5,6 +5,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { ProviderBasicTab } from "./ProviderBasicTab"
+import { ProviderModelsTab } from "./ProviderModelsTab"
 import type { ProviderConfig } from "@/lib/opencode-types"
 
 interface Props {
@@ -46,7 +47,7 @@ export function ProviderDialog({ providerId, provider, open, onOpenChange, onCon
             <ProviderBasicTab provider={local} onChange={handleChange} />
           </TabsContent>
           <TabsContent value="models" className="py-4">
-            <p className="text-sm text-muted-foreground">模型编辑将在后续任务实现</p>
+            <ProviderModelsTab provider={local} onChange={handleChange} />
           </TabsContent>
         </Tabs>
         <DialogFooter>
