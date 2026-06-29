@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Pause, Play, Trash2, Download } from "lucide-react"
@@ -30,7 +30,10 @@ export function LogView({ height = "400px" }: { height?: string }) {
     if (!paused) bottomRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [entries, paused])
 
-  const filtered = activeTab === "all" ? entries : entries.filter((e) => e.source === activeTab)
+  const filtered = useMemo(
+    () => activeTab === "all" ? entries : entries.filter((e) => e.source === activeTab),
+    [entries, activeTab],
+  )
 
   const handleClear = () => {
     clearLogs(activeTab).then(() => {
@@ -52,7 +55,8 @@ export function LogView({ height = "400px" }: { height?: string }) {
             <TabsTrigger value="bridge">Bridge</TabsTrigger>
           </TabsList>
         </Tabs>
-        <div className="flex gap-1">
+        <div className="flex items-center gap-1">
+          {paused && <span className="text-xs text-muted-foreground">已暂停</span>}
           <Button size="sm" variant="ghost" onClick={() => setPaused((p) => !p)}>
             {paused ? <Play className="h-3 w-3" /> : <Pause className="h-3 w-3" />}
           </Button>
@@ -61,8 +65,8 @@ export function LogView({ height = "400px" }: { height?: string }) {
         </div>
       </div>
       <div className={`overflow-auto rounded border bg-muted/30 p-2 font-mono text-xs`} style={{ height }}>
-        {filtered.map((e, i) => (
-          <div key={i} className={e.level === "error" ? "text-red-500" : "text-foreground"}>
+        {filtered.map((e) => (
+          <div key={e.seq} className={e.level === "error" ? "text-red-500" : "text-foreground"}>
             <span className="text-muted-foreground">[{new Date(e.ts * 1000).toLocaleTimeString()}]</span>{" "}
             <span className="text-muted-foreground">[{e.source}]</span>{" "}
             {e.line}
