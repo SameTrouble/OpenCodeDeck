@@ -1,25 +1,26 @@
-import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ProcessCard } from "@/components/ProcessCard"
 import { LogView } from "@/components/LogView"
 import { useProcessState } from "@/hooks/useProcessState"
-import { startAll, stopAll, restartAll } from "@/lib/tauri"
-import { toast } from "sonner"
-import { formatError } from "@/lib/utils"
+import { useEffect, useState } from "react"
+import { getConfig } from "@/lib/tauri"
+import type { AppConfig } from "@/lib/types"
 
 export function Dashboard() {
-  const { state } = useProcessState()
+  const { state, refresh } = useProcessState()
+  const [config, setConfig] = useState<AppConfig | null>(null)
+
+  useEffect(() => { getConfig().then(setConfig).then(refresh) }, [refresh])
+
+  if (!config) return <div>加载中...</div>
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-2">
-        <Button onClick={() => startAll().catch((e) => toast.error(`启动失败: ${formatError(e)}`))}>启动全部</Button>
-        <Button variant="outline" onClick={() => stopAll().catch((e) => toast.error(`停止失败: ${formatError(e)}`))}>停止全部</Button>
-        <Button variant="outline" onClick={() => restartAll().catch((e) => toast.error(`重启失败: ${formatError(e)}`))}>重启全部</Button>
-      </div>
       <div className="grid grid-cols-2 gap-4">
-        <ProcessCard target="server" state={state.server} />
-        <ProcessCard target="bridge" state={state.bridge} />
+        {state.servers.map((s) => (
+          <ProcessCard key={s.id} target="server" state={s.state} serverId={s.id} name={s.name} />
+        ))}
+        <ProcessCard target="bridge" state={state.bridge} servers={config.servers} boundServerId={config.bridge.boundServerId} />
       </div>
       <Card>
         <CardHeader><CardTitle className="text-sm">最近日志</CardTitle></CardHeader>

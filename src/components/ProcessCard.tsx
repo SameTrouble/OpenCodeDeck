@@ -2,8 +2,8 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Play, Square, RotateCcw } from "lucide-react"
-import type { ProcessState, ProcessTarget } from "@/lib/types"
-import { startProcess, stopProcess, restartProcess } from "@/lib/tauri"
+import type { ProcessState, ProcessTarget, ServerConfig } from "@/lib/types"
+import { startProcess, stopProcess, restartProcess, bindBridge } from "@/lib/tauri"
 import { toast } from "sonner"
 import { formatError } from "@/lib/utils"
 
@@ -15,14 +15,24 @@ const stateColor: Record<string, string> = {
   Failed: "bg-red-500",
 }
 
-export function ProcessCard({ target, state }: { target: ProcessTarget; state: ProcessState }) {
-  const label = target === "server" ? "opencode server" : "bridge"
+interface ProcessCardProps {
+  target: ProcessTarget
+  state: ProcessState
+  serverId?: string
+  name?: string
+  servers?: ServerConfig[]
+  boundServerId?: string
+}
+
+export function ProcessCard({ target, state, serverId, name, servers, boundServerId }: ProcessCardProps) {
+  const label = target === "server" ? (name ?? "server") : "bridge"
   const isRunning = state.state === "Running"
   const isBusy = state.state === "Starting" || state.state === "Stopping"
 
-  const handleStart = () => startProcess(target).catch((e) => toast.error(`启动失败: ${formatError(e)}`))
-  const handleStop = () => stopProcess(target).catch((e) => toast.error(`停止失败: ${formatError(e)}`))
-  const handleRestart = () => restartProcess(target).catch((e) => toast.error(`重启失败: ${formatError(e)}`))
+  const handleStart = () => startProcess(target, serverId).catch((e) => toast.error(`启动失败: ${formatError(e)}`))
+  const handleStop = () => stopProcess(target, serverId).catch((e) => toast.error(`停止失败: ${formatError(e)}`))
+  const handleRestart = () => restartProcess(target, serverId).catch((e) => toast.error(`重启失败: ${formatError(e)}`))
+  const handleBind = (newId: string) => bindBridge(newId).catch((e) => toast.error(`绑定失败: ${formatError(e)}`))
 
   return (
     <Card>
@@ -35,11 +45,25 @@ export function ProcessCard({ target, state }: { target: ProcessTarget; state: P
       </CardHeader>
       <CardContent>
         <div className="space-y-1 text-xs text-muted-foreground">
-          {state.pid && <div>PID: {state.pid}</div>}
+          {state.pid != null && <div>PID: {state.pid}</div>}
           {state.uptimeSec != null && <div>运行时长: {state.uptimeSec}s</div>}
           {state.healthy != null && <div>健康: {state.healthy ? "正常" : "异常"}</div>}
           {state.exitCode != null && <div>退出码: {state.exitCode}</div>}
         </div>
+        {target === "bridge" && servers && (
+          <div className="mt-3 space-y-1">
+            <span className="text-xs text-muted-foreground">绑定 server</span>
+            <select
+              className="w-full rounded border bg-transparent px-2 py-1 text-xs"
+              value={boundServerId ?? ""}
+              onChange={(e) => handleBind(e.target.value)}
+            >
+              {servers.map((s) => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
         <div className="mt-3 flex gap-2">
           <Button size="sm" variant="outline" onClick={handleStart} disabled={isRunning || isBusy}>
             <Play className="mr-1 h-3 w-3" /> 启动
