@@ -5,17 +5,6 @@ use tokio::process::Child;
 use crate::error::{AppError, AppResult};
 use std::path::Path;
 
-fn parse_port_from_url(url: &str) -> crate::error::AppResult<u16> {
-    let after_scheme = url.split("://").nth(1).unwrap_or(url);
-    let host_port = after_scheme.split('/').next().unwrap_or(after_scheme);
-    let port_str = host_port.rsplit(':').next().ok_or_else(|| {
-        crate::error::AppError::Config(format!("url has no port: {}", url))
-    })?;
-    port_str.parse::<u16>().map_err(|_| {
-        crate::error::AppError::Config(format!("invalid port in url: {}", url))
-    })
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum ProcessStateKind {
     Stopped,
@@ -118,10 +107,38 @@ impl ProcessManager {
         SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0)
     }
 
-    pub fn start_server(&self, server_id: &str, cfg: &crate::config::AppConfig) -> crate::error::AppResult<ProcessState> {
+    pub fn start_server<R: tauri::Runtime>(&self, server_id: &str, cfg: &crate::config::AppConfig, app_handle: &tauri::AppHandle<R>) -> crate::error::AppResult<ProcessState> {
         let server_cfg = cfg.servers.iter().find(|s| s.id == server_id)
             .ok_or_else(|| crate::error::AppError::Config(format!("server not found: {}", server_id)))?;
-        let port = parse_port_from_url(&server_cfg.url)?;
+        let hostname = server_cfg.hostname.as_str();
+        let port = server_cfg.port;
+        if crate::process::port_check::is_port_in_use(hostname, port) {
+            let pids = crate::process::port_check::pids_on_port(port)?;
+            if pids.is_empty() {
+                return Err(crate::error::AppError::Process(format!(
+                    "端口 {} 被占用但无法获取占用进程", port
+                )));
+            }
+            use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+            let confirmed = app_handle.dialog()
+                .message(format!("端口 {} 被进程 {} 占用，是否终止后启动？", port, pids.iter().map(|p| p.to_string()).collect::<Vec<_>>().join(",")))
+                .title("端口被占用")
+                .kind(MessageDialogKind::Warning)
+                .buttons(MessageDialogButtons::YesNo)
+                .blocking_show();
+            if !confirmed {
+                return Err(crate::error::AppError::Process(format!("启动取消：端口 {} 被占用", port)));
+            }
+            for pid in pids {
+                crate::process::port_check::kill_pid(pid)?;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(200));
+            if crate::process::port_check::is_port_in_use(hostname, port) {
+                return Err(crate::error::AppError::Process(format!(
+                    "终止占用进程后端口 {} 仍被占用", port
+                )));
+            }
+        }
         {
             let mut servers = crate::process::lock_or_recover(&self.servers);
             if let Some(mp) = servers.get(server_id) {
@@ -139,7 +156,7 @@ impl ProcessManager {
         self.emit_state(ProcessTarget::Server, Some(server_id.to_string()));
 
         let mut cmd = tokio::process::Command::from(crate::process::resolve_command("opencode")?);
-        cmd.arg("serve").arg("--port").arg(port.to_string());
+        cmd.arg("serve").arg("--hostname").arg(hostname).arg("--port").arg(port.to_string());
         cmd.current_dir(if server_cfg.cwd.is_empty() { "." } else { &server_cfg.cwd });
         cmd.stdout(std::process::Stdio::piped());
         cmd.stderr(std::process::Stdio::piped());
@@ -251,9 +268,9 @@ impl ProcessManager {
         Ok(())
     }
 
-    pub async fn restart_server(&self, server_id: &str, cfg: &crate::config::AppConfig) -> crate::error::AppResult<ProcessState> {
+    pub async fn restart_server<R: tauri::Runtime>(&self, server_id: &str, cfg: &crate::config::AppConfig, app_handle: &tauri::AppHandle<R>) -> crate::error::AppResult<ProcessState> {
         self.stop_server(server_id).await?;
-        self.start_server(server_id, cfg)
+        self.start_server(server_id, cfg, app_handle)
     }
 
     pub fn get_server_state(&self, server_id: &str) -> ProcessState {
@@ -597,7 +614,8 @@ mod multi_server_tests {
         let (on_state, on_log, on_qr) = noop_callbacks();
         let pm = ProcessManager::new(on_state, on_log, on_qr);
         let cfg = ConfigStore::default_config();
-        let result = pm.start_server("nonexistent", &cfg);
+        let app = tauri::test::mock_app();
+        let result = pm.start_server("nonexistent", &cfg, app.handle());
         assert!(result.is_err(), "starting unknown server id should error");
         std::mem::forget(pm);
     }
