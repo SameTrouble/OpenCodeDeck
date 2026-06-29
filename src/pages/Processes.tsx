@@ -17,7 +17,7 @@ export function Processes() {
       {state.servers.map((s) => (
         <ProcessCard key={s.id} target="server" state={s.state} serverId={s.id} name={s.name} />
       ))}
-      <ProcessCard target="bridge" state={state.bridge} servers={config.servers} boundServerId={config.bridge.boundServerId} />
+      <ProcessCard target="bridge" state={state.bridge} servers={config.servers} boundServerId={config.bridge.boundServerId} onConfigUpdate={() => getConfig().then(setConfig)} />
     </div>
   )
 }

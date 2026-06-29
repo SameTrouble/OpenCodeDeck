@@ -1,6 +1,7 @@
 import { Switch } from "@/components/ui/switch"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { AlertTriangle } from "lucide-react"
 import type { ProcessState, ProcessTarget, ServerConfig } from "@/lib/types"
 import { startProcess, stopProcess, bindBridge } from "@/lib/tauri"
 import { toast } from "sonner"
@@ -21,9 +22,10 @@ interface ProcessCardProps {
   name?: string
   servers?: ServerConfig[]
   boundServerId?: string
+  onConfigUpdate?: () => void
 }
 
-export function ProcessCard({ target, state, serverId, name, servers, boundServerId }: ProcessCardProps) {
+export function ProcessCard({ target, state, serverId, name, servers, boundServerId, onConfigUpdate }: ProcessCardProps) {
   const label = target === "server" ? (name ?? "server") : "bridge"
   const isRunning = state.state === "Running"
   const isBusy = state.state === "Starting" || state.state === "Stopping"
@@ -35,7 +37,9 @@ export function ProcessCard({ target, state, serverId, name, servers, boundServe
       stopProcess(target, serverId).catch((e) => toast.error(`停止失败: ${formatError(e)}`))
     }
   }
-  const handleBind = (newId: string) => bindBridge(newId).catch((e) => toast.error(`绑定失败: ${formatError(e)}`))
+  const handleBind = (newId: string) => bindBridge(newId)
+    .then(() => onConfigUpdate?.())
+    .catch((e) => toast.error(`绑定失败: ${formatError(e)}`))
 
   return (
     <Card>
@@ -71,6 +75,12 @@ export function ProcessCard({ target, state, serverId, name, servers, boundServe
           <Switch checked={isRunning} disabled={isBusy} onCheckedChange={handleToggle} />
           <span className="text-xs text-muted-foreground">{isRunning ? "运行中" : "已停止"}</span>
         </div>
+        {target === "bridge" && (
+          <div className="mt-3 flex items-start gap-2 rounded-md border border-yellow-500/50 bg-yellow-500/10 p-2 text-xs text-yellow-700 dark:text-yellow-400">
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0 translate-y-0.5" />
+            <span>opencode web 和 bridge 建议不要同时使用同一个 serve。</span>
+          </div>
+        )}
       </CardContent>
     </Card>
   )

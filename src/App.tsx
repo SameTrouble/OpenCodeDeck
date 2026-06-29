@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react"
-import { LayoutDashboard, Cpu, Settings, Boxes, Radio, ScrollText } from "lucide-react"
-import { Dashboard } from "@/pages/Dashboard"
+import { Cpu, Settings, Boxes, Radio, ScrollText } from "lucide-react"
 import { Processes } from "@/pages/Processes"
 import { Config } from "@/pages/Config"
 import { Bridge } from "@/pages/Bridge"
@@ -11,10 +10,9 @@ import { Toaster } from "@/components/ui/sonner"
 import { ProcessStateProvider, useProcessState } from "@/hooks/useProcessState"
 import { cn } from "@/lib/utils"
 
-type Page = "dashboard" | "processes" | "config" | "bridge" | "channels" | "logs"
+type Page = "processes" | "config" | "bridge" | "channels" | "logs"
 
 const navItems: { id: Page; label: string; icon: React.ReactNode }[] = [
-  { id: "dashboard", label: "仪表盘", icon: <LayoutDashboard className="h-4 w-4" /> },
   { id: "processes", label: "进程", icon: <Cpu className="h-4 w-4" /> },
   { id: "config", label: "配置", icon: <Settings className="h-4 w-4" /> },
   { id: "bridge", label: "Bridge", icon: <Boxes className="h-4 w-4" /> },
@@ -23,7 +21,7 @@ const navItems: { id: Page; label: string; icon: React.ReactNode }[] = [
 ]
 
 export default function App() {
-  const [page, setPage] = useState<Page>("dashboard")
+  const [page, setPage] = useState<Page>("processes")
 
   return (
     <ProcessStateProvider>
@@ -50,7 +48,6 @@ function AppContent({ page, setPage }: { page: Page; setPage: (p: Page) => void 
         ))}
       </nav>
       <main className="flex-1 overflow-auto p-6">
-        {page === "dashboard" && <Dashboard />}
         {page === "processes" && <Processes />}
         {page === "config" && <Config />}
         {page === "bridge" && <Bridge />}
