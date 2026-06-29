@@ -157,4 +157,23 @@ mod tests {
         std::fs::write(store.config_dir().join("opencode.jsonc"), "{}").unwrap();
         assert!(store.config_path().ends_with("opencode.jsonc"));
     }
+
+    #[test]
+    fn new_resolves_to_home_config_opencode() {
+        let dir = tempfile::tempdir().unwrap();
+        let fake_home = dir.path().to_path_buf();
+        let original = std::env::var("HOME").ok();
+        unsafe {
+            std::env::set_var("HOME", &fake_home);
+        }
+        let store = OpencodeConfigStore::new();
+        unsafe {
+            match original {
+                Some(v) => std::env::set_var("HOME", v),
+                None => std::env::remove_var("HOME"),
+            }
+        }
+        let expected = fake_home.join(".config").join("opencode");
+        assert_eq!(store.config_dir(), expected);
+    }
 }
