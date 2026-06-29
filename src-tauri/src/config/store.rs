@@ -34,6 +34,9 @@ pub fn migrate_server_urls(cfg: &mut AppConfig) {
                 s.hostname = if host.is_empty() { "127.0.0.1".to_string() } else { host.to_string() };
                 if let Ok(p) = port_str.parse::<u16>() {
                     s.port = p;
+                    if s.port == 0 {
+                        s.port = 4097;
+                    }
                 } else if s.port == 0 {
                     s.port = 4097;
                 }
@@ -484,6 +487,17 @@ mod robustness_tests {
         assert_eq!(cfg.servers[0].hostname, "0.0.0.0");
         assert_eq!(cfg.servers[0].port, 5050);
         assert!(cfg.servers[0].url.is_none(), "url field should be cleared after migration");
+    }
+
+    #[test]
+    fn migrate_server_urls_treats_parsed_port_zero_as_invalid() {
+        let mut cfg = ConfigStore::default_config();
+        cfg.servers[0].port = 0;
+        cfg.servers[0].url = Some("http://0.0.0.0:0".to_string());
+        migrate_server_urls(&mut cfg);
+        assert_eq!(cfg.servers[0].hostname, "0.0.0.0");
+        assert_eq!(cfg.servers[0].port, 4097, "parsed port 0 must fall back to 4097");
+        assert!(cfg.servers[0].url.is_none());
     }
 
     #[test]
