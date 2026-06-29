@@ -11,6 +11,7 @@ import { StateView } from "@/components/StateView"
 import { useOpencodeConfig } from "@/hooks/useOpencodeConfig"
 import { toast } from "sonner"
 import type { ProviderConfig } from "@/lib/opencode-types"
+import { ProviderDialog } from "@/components/provider-editor/ProviderDialog"
 
 function genId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
@@ -19,6 +20,7 @@ function genId() {
 export function Providers() {
   const { config, loading, error, reload, update, isDirty, save, reset } = useOpencodeConfig()
   const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [editId, setEditId] = useState<string | null>(null)
 
   if (loading || !config) return <StateView loading={loading} error={error} onRetry={reload}>{null}</StateView>
 
@@ -38,6 +40,16 @@ export function Providers() {
       if (draft.provider) delete draft.provider[id]
     })
     setDeleteId(null)
+  }
+
+  const confirmEdit = (patch: ProviderConfig) => {
+    if (!editId) return
+    update((draft) => {
+      if (draft.provider && draft.provider[editId]) {
+        draft.provider[editId] = patch
+      }
+    })
+    setEditId(null)
   }
 
   const handleSave = () => {
@@ -84,7 +96,7 @@ export function Providers() {
                       </div>
                     </div>
                     <div className="flex gap-2">
-                      <Button variant="outline" size="sm" disabled>
+                      <Button variant="outline" size="sm" onClick={() => setEditId(id)}>
                         <Pencil className="h-4 w-4 mr-1" /> 编辑
                       </Button>
                       <AlertDialog open={deleteId === id} onOpenChange={(o) => setDeleteId(o ? id : null)}>
@@ -110,6 +122,15 @@ export function Providers() {
           </div>
         )}
         <Button onClick={handleSave} disabled={!isDirty}>保存</Button>
+        {editId && config.provider?.[editId] && (
+          <ProviderDialog
+            providerId={editId}
+            provider={config.provider[editId]}
+            open={editId !== null}
+            onOpenChange={(o) => { if (!o) setEditId(null) }}
+            onConfirm={confirmEdit}
+          />
+        )}
       </StateView>
     </div>
   )
