@@ -104,6 +104,7 @@ export interface LogEntry {
   source: "server" | "bridge"
   level: "info" | "error"
   line: string
+  seq: number
 }
 
 export type QrKind = "ascii" | "url"
