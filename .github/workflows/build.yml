@@ -53,7 +53,9 @@ jobs:
       - run: npm run build
 
       - name: Set Apple signing environment
-        if: startsWith(github.ref, 'refs/tags/') && runner.os == 'macOS' && secrets.APPLE_CERTIFICATE != ''
+        if: startsWith(github.ref, 'refs/tags/') && runner.os == 'macOS' && env.HAS_APPLE_CERT == 'true'
+        env:
+          HAS_APPLE_CERT: ${{ secrets.APPLE_CERTIFICATE != '' }}
         run: |
           echo "APPLE_CERTIFICATE=${{ secrets.APPLE_CERTIFICATE }}" >> "$GITHUB_ENV"
           echo "APPLE_CERTIFICATE_PASSWORD=${{ secrets.APPLE_CERTIFICATE_PASSWORD }}" >> "$GITHUB_ENV"
