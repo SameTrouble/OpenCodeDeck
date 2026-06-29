@@ -37,19 +37,19 @@ struct MIB_TCPROW_OWNER_PID {
 
 #[cfg(windows)]
 pub fn pids_on_port(port: u16) -> AppResult<Vec<u32>> {
-    use windows::Win32::NetworkManagement::IpHelper::GetExtendedTcpTable;
+    use windows::Win32::NetworkManagement::IpHelper::{GetExtendedTcpTable, TCP_TABLE_OWNER_PID_LISTENER};
     use windows::Win32::Networking::WinSock::htons;
 
     let mut size: u32 = 0;
     unsafe {
-        GetExtendedTcpTable(None, &mut size, false, 2, 5, 0);
+        GetExtendedTcpTable(None, &mut size, false, 2, TCP_TABLE_OWNER_PID_LISTENER, 0);
     }
     if size == 0 {
         return Ok(Vec::new());
     }
     let mut buf = vec![0u8; size as usize];
     let result = unsafe {
-        GetExtendedTcpTable(Some(buf.as_mut_ptr() as *mut _), &mut size, false, 2, 5, 0)
+        GetExtendedTcpTable(Some(buf.as_mut_ptr() as *mut _), &mut size, false, 2, TCP_TABLE_OWNER_PID_LISTENER, 0)
     };
     if result != 0 {
         return Ok(Vec::new());
@@ -62,7 +62,7 @@ pub fn pids_on_port(port: u16) -> AppResult<Vec<u32>> {
     let row_size = std::mem::size_of::<MIB_TCPROW_OWNER_PID>();
     let header_size = std::mem::size_of::<u32>();
     let mut pids = Vec::new();
-    let target_port = htons(port);
+    let target_port = unsafe { htons(port) };
     for i in 0..entries_count as usize {
         let offset = header_size + i * row_size;
         if offset + row_size > buf.len() {
