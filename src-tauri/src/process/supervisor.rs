@@ -1,7 +1,14 @@
 use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use super::manager::{ManagedProcess, ProcessTarget, ProcessState, ProcessStateKind, StateCallback, LogCallback, QrCallback};
 use crate::monitor::{LogEntry, stdout_parser::StdoutParser};
+
+static LOG_SEQ: AtomicU64 = AtomicU64::new(0);
+
+fn next_seq() -> u64 {
+    LOG_SEQ.fetch_add(1, Ordering::Relaxed)
+}
 
 fn now_ts() -> i64 {
     std::time::SystemTime::now()
@@ -23,7 +30,7 @@ async fn read_stream<R: tokio::io::AsyncRead + Unpin>(
     let mut lines = BufReader::new(reader).lines();
     loop {
         match lines.next_line().await {
-            Ok(Some(line)) => on_log(LogEntry { ts: now_ts(), source: source.clone(), level: level.clone(), line }),
+            Ok(Some(line)) => on_log(LogEntry { ts: now_ts(), source: source.clone(), level: level.clone(), line, seq: next_seq() }),
             Ok(None) => break,
             Err(e) => {
                 on_log(LogEntry {
@@ -31,6 +38,7 @@ async fn read_stream<R: tokio::io::AsyncRead + Unpin>(
                     source: source.clone(),
                     level: "error".to_string(),
                     line: format!("stream read error: {}", e),
+                    seq: next_seq(),
                 });
                 break;
             }
@@ -53,7 +61,7 @@ async fn read_stream_with_qr<R: tokio::io::AsyncRead + Unpin>(
                 on_qr(ev);
             }
         }
-        on_log(LogEntry { ts: now_ts(), source: source.clone(), level: level.clone(), line });
+        on_log(LogEntry { ts: now_ts(), source: source.clone(), level: level.clone(), line, seq: next_seq() });
     }
 }
 

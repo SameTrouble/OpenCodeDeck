@@ -8,6 +8,7 @@ pub struct LogEntry {
     pub source: String,
     pub level: String,
     pub line: String,
+    pub seq: u64,
 }
 
 pub struct LogBuffer {
@@ -59,7 +60,7 @@ mod tests {
     use super::*;
 
     fn entry(src: &str, n: i64) -> LogEntry {
-        LogEntry { ts: n, source: src.to_string(), level: "info".to_string(), line: format!("line {}", n) }
+        LogEntry { ts: n, source: src.to_string(), level: "info".to_string(), line: format!("line {}", n), seq: 0 }
     }
 
     #[test]
