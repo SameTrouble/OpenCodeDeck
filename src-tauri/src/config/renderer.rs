@@ -5,16 +5,17 @@ use crate::config::store::AppConfig;
 pub fn render_env(config: &AppConfig) -> String {
     let mut lines = Vec::new();
 
-    let server_url = config.servers.iter()
+    let server = config.servers.iter()
         .find(|s| s.id == config.bridge.bound_server_id)
-        .or_else(|| config.servers.first())
-        .map(|s| s.url.as_str())
-        .unwrap_or("http://127.0.0.1:4097");
+        .or_else(|| config.servers.first());
+    let server_url = match server {
+        Some(s) => format!("http://{}:{}", s.hostname, s.port),
+        None => "http://127.0.0.1:4097".to_string(),
+    };
     lines.push(format!("OPENCODE_SERVER_URL={}", server_url));
-    if let Some(server) = config.servers.iter().find(|s| s.id == config.bridge.bound_server_id)
-        .or_else(|| config.servers.first()) {
-        if !server.cwd.is_empty() {
-            lines.push(format!("OPENCODE_CWD={}", server.cwd));
+    if let Some(s) = server {
+        if !s.cwd.is_empty() {
+            lines.push(format!("OPENCODE_CWD={}", s.cwd));
         }
     }
 
@@ -162,13 +163,14 @@ mod tests {
     }
 
     #[test]
-    fn render_env_uses_server_url_from_config() {
+    fn render_env_uses_server_hostname_port_from_config() {
         let mut cfg = ConfigStore::default_config();
-        cfg.servers[0].url = "http://127.0.0.1:4092".to_string();
+        cfg.servers[0].hostname = "127.0.0.1".to_string();
+        cfg.servers[0].port = 4092;
         let env = render_env(&cfg);
         assert!(
             env.contains("OPENCODE_SERVER_URL=http://127.0.0.1:4092"),
-            "OPENCODE_SERVER_URL must match config, got: {}",
+            "OPENCODE_SERVER_URL must match hostname:port, got: {}",
             env
         );
     }
@@ -179,9 +181,11 @@ mod tests {
         cfg.servers.push(ServerConfig {
             id: "second".to_string(),
             name: "Second".to_string(),
-            url: "http://127.0.0.1:5050".to_string(),
+            hostname: "127.0.0.1".to_string(),
+            port: 5050,
             cwd: "/tmp".to_string(),
             extra_env: Default::default(),
+            url: None,
         });
         cfg.bridge.bound_server_id = "second".to_string();
         let env = render_env(&cfg);
@@ -190,7 +194,6 @@ mod tests {
             "OPENCODE_SERVER_URL must come from bound server, got: {}",
             env
         );
-        assert!(!env.contains("OPENCODE_SERVER_PORT="), "OPENCODE_SERVER_PORT should be removed");
     }
 
     #[test]
