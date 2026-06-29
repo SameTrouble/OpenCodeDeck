@@ -24,9 +24,58 @@ pub fn pids_on_port(port: u16) -> AppResult<Vec<u32>> {
     Ok(pids)
 }
 
-#[cfg(not(unix))]
-pub fn pids_on_port(_port: u16) -> AppResult<Vec<u32>> {
-    Err(AppError::Process("pids_on_port only supported on unix".into()))
+#[cfg(windows)]
+#[repr(C)]
+struct MIB_TCPROW_OWNER_PID {
+    dw_state: u32,
+    dw_local_addr: u32,
+    dw_local_port: u32,
+    dw_remote_addr: u32,
+    dw_remote_port: u32,
+    dw_owning_pid: u32,
+}
+
+#[cfg(windows)]
+pub fn pids_on_port(port: u16) -> AppResult<Vec<u32>> {
+    use windows::Win32::NetworkManagement::IpHelper::GetExtendedTcpTable;
+    use windows::Win32::Networking::WinSock::htons;
+
+    let mut size: u32 = 0;
+    unsafe {
+        GetExtendedTcpTable(None, &mut size, false, 2, 5, 0);
+    }
+    if size == 0 {
+        return Ok(Vec::new());
+    }
+    let mut buf = vec![0u8; size as usize];
+    let result = unsafe {
+        GetExtendedTcpTable(Some(buf.as_mut_ptr() as *mut _), &mut size, false, 2, 5, 0)
+    };
+    if result != 0 {
+        return Ok(Vec::new());
+    }
+
+    let entries_count = unsafe {
+        (buf.as_ptr() as *const u32).read_unaligned()
+    };
+
+    let row_size = std::mem::size_of::<MIB_TCPROW_OWNER_PID>();
+    let header_size = std::mem::size_of::<u32>();
+    let mut pids = Vec::new();
+    let target_port = htons(port);
+    for i in 0..entries_count as usize {
+        let offset = header_size + i * row_size;
+        if offset + row_size > buf.len() {
+            break;
+        }
+        let row = unsafe {
+            &*(buf.as_ptr().add(offset) as *const MIB_TCPROW_OWNER_PID)
+        };
+        if row.dw_local_port == target_port && row.dw_state == 2 {
+            pids.push(row.dw_owning_pid);
+        }
+    }
+    Ok(pids)
 }
 
 #[cfg(unix)]
@@ -50,9 +99,18 @@ pub fn kill_pid(pid: u32) -> AppResult<()> {
     }
 }
 
-#[cfg(not(unix))]
-pub fn kill_pid(_pid: u32) -> AppResult<()> {
-    Err(AppError::Process("kill_pid only supported on unix".into()))
+#[cfg(windows)]
+pub fn kill_pid(pid: u32) -> AppResult<()> {
+    use windows::Win32::Foundation::CloseHandle;
+    use windows::Win32::System::Threading::{OpenProcess, TerminateProcess, PROCESS_TERMINATE};
+    unsafe {
+        let handle = OpenProcess(PROCESS_TERMINATE, false, pid)
+            .map_err(|e| AppError::Process(format!("OpenProcess failed for pid {}: {}", pid, e)))?;
+        TerminateProcess(handle, 1)
+            .map_err(|e| AppError::Process(format!("TerminateProcess failed for pid {}: {}", pid, e)))?;
+        let _ = CloseHandle(handle);
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -77,6 +135,16 @@ mod tests {
 
     #[test]
     #[cfg(unix)]
+    fn pids_on_port_finds_self() {
+        let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let pids = pids_on_port(port).unwrap();
+        let self_pid = std::process::id();
+        assert!(pids.contains(&self_pid), "expected pids {:?} to contain {}", pids, self_pid);
+    }
+
+    #[test]
+    #[cfg(windows)]
     fn pids_on_port_finds_self() {
         let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
         let port = listener.local_addr().unwrap().port();
