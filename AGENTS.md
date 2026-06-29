@@ -43,7 +43,7 @@ Tauri 事件（由 Rust 发射，TS 通过 `useTauriEvent` 监听）：`state://
 
 - **push/PR** → 仅构建验证（3 个 job 并行）。
 - **push `v*` tag** → 构建 + macOS 签名公证 + 上传到 GitHub Release。
-- Ubuntu 产出 `*.AppImage`，macOS 产出 `*.dmg`。
+- Ubuntu 产出 `*.deb`，macOS 产出 `*.dmg`。
 
 ### macOS 签名 Secrets
 

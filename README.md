@@ -54,8 +54,8 @@ npm run tauri dev
 # macOS
 npm run tauri build
 
-# Linux（需指定 appimage 以避免 deb/rpm 失败）
-npm run tauri build -- --bundles appimage
+# Linux
+npm run build:linux
 ```
 
 ### 架构概览
@@ -120,8 +120,8 @@ This starts the Vite dev server on port 1420, then launches the Tauri app.
 # macOS
 npm run tauri build
 
-# Linux (specify appimage to avoid deb/rpm failures)
-npm run tauri build -- --bundles appimage
+# Linux
+npm run build:linux
 ```
 
 ### Architecture
