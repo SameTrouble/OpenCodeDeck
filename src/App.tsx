@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react"
-import { Cpu, Settings, Boxes, Radio, ScrollText } from "lucide-react"
+import { Cpu, Settings, Boxes, Radio, ScrollText, Layers } from "lucide-react"
 import { Processes } from "@/pages/Processes"
 import { Config } from "@/pages/Config"
 import { Bridge } from "@/pages/Bridge"
 import { Channels } from "@/pages/Channels"
 import { Logs } from "@/pages/Logs"
+import { Providers } from "@/pages/Providers"
 import { WechatQrDialog } from "@/components/WechatQrDialog"
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel,
@@ -14,14 +15,16 @@ import {
 import { Toaster } from "@/components/ui/sonner"
 import { ProcessStateProvider, useProcessState } from "@/hooks/useProcessState"
 import { ConfigProvider, useConfig } from "@/hooks/useConfig"
+import { OpencodeConfigProvider, useOpencodeConfig } from "@/hooks/useOpencodeConfig"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 
-type Page = "processes" | "config" | "bridge" | "channels" | "logs"
+type Page = "processes" | "config" | "providers" | "bridge" | "channels" | "logs"
 
 const navItems: { id: Page; label: string; icon: React.ReactNode }[] = [
   { id: "processes", label: "进程", icon: <Cpu className="h-4 w-4" /> },
   { id: "config", label: "配置", icon: <Settings className="h-4 w-4" /> },
+  { id: "providers", label: "供应商", icon: <Layers className="h-4 w-4" /> },
   { id: "bridge", label: "Bridge", icon: <Boxes className="h-4 w-4" /> },
   { id: "channels", label: "渠道", icon: <Radio className="h-4 w-4" /> },
   { id: "logs", label: "日志", icon: <ScrollText className="h-4 w-4" /> },
@@ -30,9 +33,11 @@ const navItems: { id: Page; label: string; icon: React.ReactNode }[] = [
 export default function App() {
   return (
     <ConfigProvider>
-      <ProcessStateProvider>
-        <AppInner />
-      </ProcessStateProvider>
+      <OpencodeConfigProvider>
+        <ProcessStateProvider>
+          <AppInner />
+        </ProcessStateProvider>
+      </OpencodeConfigProvider>
     </ConfigProvider>
   )
 }
@@ -47,24 +52,26 @@ function AppInner() {
 }
 
 function AppContent({ page, setPage }: { page: Page; setPage: (p: Page) => void }) {
-  const { isDirty, save, reset } = useConfig()
+  const { isDirty: configDirty, save: saveConfig, reset: resetConfig } = useConfig()
+  const { isDirty: opencodeDirty, save: saveOpencode, reset: resetOpencode } = useOpencodeConfig()
   const [pendingPage, setPendingPage] = useState<Page | null>(null)
 
   const trySetPage = (next: Page) => {
-    if (isDirty) setPendingPage(next)
+    if (configDirty || opencodeDirty) setPendingPage(next)
     else setPage(next)
   }
 
   const handleSaveAndLeave = () => {
-    save().then((ok) => {
-      if (ok && pendingPage) setPage(pendingPage)
-      else if (!ok) toast.error("保存失败")
+    Promise.all([saveConfig(), saveOpencode()]).then(([ok1, ok2]) => {
+      if (ok1 && ok2 && pendingPage) setPage(pendingPage)
+      else if (!ok1 || !ok2) toast.error("保存失败")
       setPendingPage(null)
     })
   }
 
   const handleDiscardAndLeave = () => {
-    reset()
+    resetConfig()
+    resetOpencode()
     if (pendingPage) setPage(pendingPage)
     setPendingPage(null)
   }
@@ -84,6 +91,7 @@ function AppContent({ page, setPage }: { page: Page; setPage: (p: Page) => void 
       <main className="flex-1 overflow-auto p-6">
         {page === "processes" && <Processes />}
         {page === "config" && <Config />}
+        {page === "providers" && <Providers />}
         {page === "bridge" && <Bridge />}
         {page === "channels" && <Channels />}
         {page === "logs" && <Logs />}
