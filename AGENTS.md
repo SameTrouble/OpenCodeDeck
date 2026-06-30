@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Tauri 2 桌面应用（React 19 + Vite + Rust），启动并监管两个子进程：`opencode serve`（服务器）和 `opencode-im-bridge`（IM 桥接）。支持 macOS 与 Linux —— `env_path.rs` 按平台组合 PATH 候选目录（macOS: homebrew + nvm + bun + opencode；Linux: snap + nvm + bun + opencode + ~/.local/bin）。
+Tauri 2 桌面应用（React 19 + Vite + Rust），启动并监管两个子进程：`opencode serve`（服务器）和 `opencode-im-bridge`（IM 桥接）。支持 macOS、Linux 与 Windows —— `env_path.rs` 按平台组合 PATH 候选目录（macOS: homebrew + nvm + bun + opencode；Linux: snap + nvm + bun + opencode + ~/.local/bin；Windows: scoop + AppData npm/Volta + ~/.bun/bin + ~/.opencode/bin + ~/.cargo/bin）。
 
 ## 命令
 
@@ -20,7 +20,7 @@ Tauri 事件（由 Rust 发射，TS 通过 `useTauriEvent` 监听）：`state://
 
 后端布局（`src-tauri/src/`）：
 - `lib.rs` —— 应用初始化、托盘图标、健康检查循环（5s 间隔）、注册所有 `invoke_handler` 命令。
-- `process/` —— `ProcessManager` 生成/监管子进程；`supervisor.rs` 读取 stdout/stderr 并检测退出（用 `stopping` 标志区分 Stopped 与 Failed）。`command_util.rs::resolve_command` 用 `which` 解析 `opencode`/`bun`/`git` 等。
+- `process/` —— `ProcessManager` 生成/监管子进程；`supervisor.rs` 读取 stdout/stderr 并检测退出（用 `stopping` 标志区分 Stopped 与 Failed）。`command_util.rs::resolve_command` 用 `which` 解析 `opencode`/`bun`/`git` 等。`platform/` 模块按平台分派进程树清理与端口探测：`unix.rs`（SIGTERM/SIGKILL + `lsof`）、`windows.rs`（Win32 Job Object + `GetExtendedTcpTable`）。
 - `bridge/installer.rs` —— 首次启动时 git clone `opencode-im-bridge` 到 `<config_dir>/bridges/opencode-im-bridge`；`update`/`reinstall` 通过 git pull/rmtree。
 - `config/renderer.rs` —— 每次启动/重启时根据 `AppConfig` 重写 bridge 的 `.env` 和 `opencode-im.jsonc`。
 - `env_path.rs` —— 启动时增强 `PATH`，让 GUI 应用能找到 `opencode`、`bun`、`node`、`git`（homebrew/nvm 目录）。修改它会破坏打包应用的依赖发现。
@@ -36,14 +36,14 @@ Tauri 事件（由 Rust 发射，TS 通过 `useTauriEvent` 监听）：`state://
 - `ConfigStore::load` 会将损坏的 `config.json` 备份为 `config.json.corrupt-<ts>` 并重写默认值 —— 依赖此机制，不要额外加 fallback 路径。
 - 部分 `cargo test` 测试调用 `std::mem::forget(pm)` 跳过运行时清理 —— 有意为之，不是要修复的泄漏。
 - `AppError` 为 `#[serde(tag = "kind", content = "message")]`；`kind` 字符串（如 `"Process"`、`"EnvNotFound"`）是 TS `AppError` 联合类型 switch 的依据。
+- Windows 的 `ProcessTracker` 持有 Win32 `HANDLE`（`*mut c_void`），通过 `unsafe impl Send/Sync` 标记为线程安全以适配 `tauri::State`。Job Object 使用 `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` 标志（windows crate 0.58 命名）确保子进程树随 job 句柄关闭而终止。`CreateJobObjectW` 需要 `Win32_Security` feature。
 
 ## CI / GitHub Actions
 
-工作流定义在 `.github/workflows/build.yml`，覆盖 ubuntu-24.04(x64)、macos-13(x64)、macos-14(arm64)。
+工作流定义在 `.github/workflows/build.yml`，覆盖 ubuntu-24.04(x64)、macos-14(arm64)、windows-latest(x64)。
 
-- **push/PR** → 仅构建验证（3 个 job 并行）。
-- **push `v*` tag** → 构建 + macOS 签名公证 + 上传到 GitHub Release。
-- Ubuntu 产出 `*.deb`，macOS 产出 `*.dmg`。
+- **push `v*` tag** → 构建 + macOS 签名公证 + 上传到 GitHub Release（3 个 job 并行）。
+- Ubuntu 产出 `*.deb`，macOS 产出 `*.dmg`，Windows 产出 `*.exe`（NSIS 安装包）。
 
 ### macOS 签名 Secrets
 

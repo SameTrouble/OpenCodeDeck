@@ -62,16 +62,16 @@ pub fn pids_on_port(port: u16) -> AppResult<Vec<u32>> {
     let row_size = std::mem::size_of::<MIB_TCPROW_OWNER_PID>();
     let header_size = std::mem::size_of::<u32>();
     let mut pids = Vec::new();
-    let target_port = unsafe { htons(port) };
-    for i in 0..entries_count as usize {
-        let offset = header_size + i * row_size;
-        if offset + row_size > buf.len() {
-            break;
-        }
-        let row = unsafe {
-            &*(buf.as_ptr().add(offset) as *const MIB_TCPROW_OWNER_PID)
-        };
-        if row.dw_local_port == target_port && row.dw_state == 2 {
+        let target_port = unsafe { htons(port) } as u32;
+        for i in 0..entries_count as usize {
+            let offset = header_size + i * row_size;
+            if offset + row_size > buf.len() {
+                break;
+            }
+            let row = unsafe {
+                &*(buf.as_ptr().add(offset) as *const MIB_TCPROW_OWNER_PID)
+            };
+            if row.dw_local_port == target_port && row.dw_state == 2 {
             pids.push(row.dw_owning_pid);
         }
     }
