@@ -1,63 +1,42 @@
 # AGENTS.md
 
-Tauri 2 桌面应用（React 19 + Vite + Rust），启动并监管两个子进程：`opencode serve`（服务器）和 `opencode-im-bridge`（IM 桥接）。支持 macOS、Linux 与 Windows —— `env_path.rs` 按平台组合 PATH 候选目录（macOS: homebrew + nvm + bun + opencode；Linux: snap + nvm + bun + opencode + ~/.local/bin；Windows: scoop + AppData npm/Volta + ~/.bun/bin + ~/.opencode/bin + ~/.cargo/bin）。
+Tauri 2 desktop app (React 19 + Vite + Rust) that launches and supervises two child processes: `opencode serve` and `opencode-im-bridge`.
 
-## 命令
+## Commands
 
-- `npm run tauri dev` —— 完整应用开发（在 1420 端口运行 `npm run dev`，然后启动 Tauri）。除非只改前端，否则用这个，不要单独用 `npm run dev`。
-- `npm run build` —— `tsc && vite build`。**这是唯一的类型检查**；没有 `lint`/`typecheck`/`test` npm 脚本。未配置 ESLint/Prettier。
-- `cargo test` —— 运行 Rust 测试（在 `src-tauri/` 内执行）。
-- 不存在前端测试。
-- 本地构建用平台专项脚本：`npm run build:mac`（dmg）/ `npm run build:linux`（deb）/ `npm run build:windows`（nsis）。这些脚本通过 `--bundles` 只产出本机标准安装包格式，避免 `tauri.conf.json` 的 `"targets": "all"` 尝试全部格式而失败。CI 工作流仍用各自 matrix 中的 `--bundles` 参数。
+| Task | Command | Notes |
+|------|---------|-------|
+| Dev (full app) | `npm run tauri dev` | Starts Vite on `:1420` (strictPort) then launches Tauri. |
+| Frontend build / typecheck | `npm run build` | Runs `tsc` then `vite build`. `tsc` is the only typecheck. |
+| Fast typecheck only | `npx tsc --noEmit` | `tsconfig.json` already has `noEmit: true`. |
+| Build macOS | `npm run tauri build` (or `build:mac` for dmg) | `beforeBuildCommand` runs `npm run build` automatically. |
+| Build Linux | `npm run build:linux` | Bundles `deb`. |
+| Build Windows | `npm run build:windows` | Bundles `nsis`. |
+| Rust checks | `cargo check` (in `src-tauri/`) | |
+| Rust tests | `cargo test` (in `src-tauri/`) | Unit tests live inline as `#[cfg(test)] mod tests` (e.g. `env_path.rs`). |
 
-Vite 端口 1420 为 `strictPort: true`，且 Tauri 的 `devUrl` 依赖它 —— 不要修改。
+There is **no lint script** and **no frontend test runner** configured. Do not assume vitest/jest exists. For verification: `npx tsc --noEmit` for TS, `cargo test` for Rust.
 
-## 架构
+## Architecture
 
-前端↔后端桥接是单文件：`src/lib/tauri.ts` 包装了每个 `invoke<T>()`。类型定义在 `src/lib/types.ts`（TS），**必须手动保持同步**于 `src-tauri/src/config/store.rs` 和 `commands.rs` 中的 Rust 结构体。所有 Rust 跨边界结构体使用 `#[serde(rename_all = "camelCase")]` —— 新增命令时需保持此约定。
+- **Frontend entry**: `src/main.tsx` → `src/App.tsx`. Pages in `src/pages/` (Providers, Processes, Bridge, Logs, Config, Channels).
+- **Frontend→Rust IPC**: all `invoke()` wrappers centralized in `src/lib/tauri.ts`. Add new commands there.
+- **Rust entry**: `src-tauri/src/lib.rs::run()` is the app bootstrap. Modules: `process` (supervisor/manager), `bridge` (installer + env check), `config` (store + renderer), `monitor` (log buffer, stdout parser, health), `opencode_config`, `env_path`, `commands`, `state`, `error`.
+- **Tauri events use `://` as separator** (e.g. `state://update`, `log://entry`, `health://update`, `wechat://qrcode`, `wechat://logined`). This is intentional, not a typo — match it when emitting/listening.
+- **Runtime PATH augmentation**: `env_path::augment_path()` runs at startup (`lib.rs`) to add homebrew/nvm/snap/bun/cargo dirs so the GUI app can find `opencode`, `bun`, `git`. Per-platform lists in `src-tauri/src/env_path.rs`. If a CLI "not found" issue arises, check whether its install dir is listed there.
+- **Health check loop**: polls each running server every 5s (`lib.rs` setup task); reconfigures checkers when the config version bumps.
+- **Window close → hide to tray**: close is intercepted via `prevent_close` + `hide()`; real exit goes through the tray "quit" menu which stops all processes first.
 
-Tauri 事件（由 Rust 发射，TS 通过 `useTauriEvent` 监听）：`state://update`、`log://entry`、`health://update`、`wechat://qrcode`、`wechat://logined`。名称使用 `://` 后缀。
+## Conventions
 
-后端布局（`src-tauri/src/`）：
-- `lib.rs` —— 应用初始化、托盘图标、健康检查循环（5s 间隔）、注册所有 `invoke_handler` 命令。
-- `process/` —— `ProcessManager` 生成/监管子进程；`supervisor.rs` 读取 stdout/stderr 并检测退出（用 `stopping` 标志区分 Stopped 与 Failed）。`command_util.rs::resolve_command` 用 `which` 解析 `opencode`/`bun`/`git` 等。`platform/` 模块按平台分派进程树清理与端口探测：`unix.rs`（SIGTERM/SIGKILL + `lsof`）、`windows.rs`（Win32 Job Object + `GetExtendedTcpTable`）。
-- `bridge/installer.rs` —— 首次启动时 git clone `opencode-im-bridge` 到 `<config_dir>/bridges/opencode-im-bridge`；`update`/`reinstall` 通过 git pull/rmtree。
-- `config/renderer.rs` —— 每次启动/重启时根据 `AppConfig` 重写 bridge 的 `.env` 和 `opencode-im.jsonc`。
-- `env_path.rs` —— 启动时增强 `PATH`，让 GUI 应用能找到 `opencode`、`bun`、`node`、`git`（homebrew/nvm 目录）。修改它会破坏打包应用的依赖发现。
-- `monitor/` —— `LogBuffer`（每个来源 5000 条环形缓冲）、`health.rs`（`GET <server_url>/session/status`）、`stdout_parser.rs`（检测微信二维码为 ASCII 块或 URL）。
+- **Path alias**: `@/*` → `./src/*` (configured in both `tsconfig.json` and `vite.config.ts`). Use `@/...` imports.
+- **shadcn/ui** (new-york style, neutral base, lucide icons). UI primitives live in `src/components/ui/`. Aliases in `components.json` point to `@/components`, `@/lib/utils`, `@/hooks`.
+- **Tailwind v4 hybrid**: `src/styles/globals.css` uses `@import "tailwindcss"` (v4) but loads the v3-style `tailwind.config.ts` via the `@config "../../tailwind.config.ts"` directive. Do **not** delete `tailwind.config.ts` or "migrate" to pure-v4 config without reconciling the `@config` reference — theme tokens (CSS vars in `globals.css`) and the JS config are both in use.
+- **Dark mode**: class-based (`darkMode: ["class"]`), toggled via `next-themes`.
+- **Rust**: edition 2021, crate `opencodedeck_lib` (`crate-type` includes `rlib` for `cargo test`). Errors flow through `error::AppResult`/`AppError`; commands return `AppResult<T>`.
+- **Tauri commands** use `#[serde(rename_all = "camelCase")]` on response structs so Rust snake_case serializes to JS camelCase — keep this when adding new DTOs.
+- **Platform-specific code** is split under `src-tauri/src/process/platform/{unix,windows}.rs`; `env_path.rs` also has per-platform path lists. README claims macOS + Linux, but Windows is supported too (build script + platform module exist).
 
-## 约定 / 陷阱
+## External runtime dependencies
 
-- `renderer.rs` 中的 `derive_server_url` **用 `config.server.port` 覆盖配置 URL 的端口**。这是有意的 —— 保证 bridge 和启动的服务器指向同一实例。不要"修复"这个不一致。
-- `@/*` 路径别名 → `./src/*`（`tsconfig.json` 和 `vite.config.ts` 均如此）。
-- TS 为 `strict` 且开启 `noUnusedLocals`/`noUnusedParameters` —— 未使用的导入/变量会导致 `npm run build` 失败。
-- shadcn/ui 组件位于 `src/components/ui`（样式："new-york"，图标库：lucide）。新增组件用 shadcn CLI，不要手写。
-- 关闭主窗口只是隐藏（托盘行为）。仅通过托盘菜单 → `quit` 退出，会先停止两个进程。
-- `ConfigStore::load` 会将损坏的 `config.json` 备份为 `config.json.corrupt-<ts>` 并重写默认值 —— 依赖此机制，不要额外加 fallback 路径。
-- 部分 `cargo test` 测试调用 `std::mem::forget(pm)` 跳过运行时清理 —— 有意为之，不是要修复的泄漏。
-- `AppError` 为 `#[serde(tag = "kind", content = "message")]`；`kind` 字符串（如 `"Process"`、`"EnvNotFound"`）是 TS `AppError` 联合类型 switch 的依据。
-- Windows 的 `ProcessTracker` 持有 Win32 `HANDLE`（`*mut c_void`），通过 `unsafe impl Send/Sync` 标记为线程安全以适配 `tauri::State`。Job Object 使用 `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` 标志（windows crate 0.58 命名）确保子进程树随 job 句柄关闭而终止。`CreateJobObjectW` 需要 `Win32_Security` feature。
-
-## CI / GitHub Actions
-
-工作流定义在 `.github/workflows/build.yml`，覆盖 ubuntu-24.04(x64)、macos-14(arm64)、windows-latest(x64)。
-
-- **push `v*` tag** → 构建 + macOS 签名公证 + 上传到 GitHub Release（3 个 job 并行）。
-- Ubuntu 产出 `*.deb`，macOS 产出 `*.dmg`，Windows 产出 `*.exe`（NSIS 安装包）。
-
-### macOS 签名 Secrets
-
-仅在 tag 触发时注入（push/PR 不签名）。未配置时 macOS 仍能构建，产出未签名 `.dmg`。
-
-| Secret | 用途 |
-|--------|------|
-| `APPLE_CERTIFICATE` | Developer ID Application `.p12` 的 base64 |
-| `APPLE_CERTIFICATE_PASSWORD` | `.p12` 导出密码 |
-| `APPLE_ID` | Apple ID 邮箱（公证用） |
-| `APPLE_PASSWORD` | App 专用密码（appleid.apple.com 生成） |
-| `APPLE_TEAM_ID` | 10 位团队 ID |
-| `APPLE_SIGNING_IDENTITY` | 证书 CN，如 `Developer ID Application: Name (TEAMID)` |
-
-### 权限要求
-
-仓库 Settings → Actions → General → Workflow permissions 需设为 **Read and write permissions**（`GITHUB_TOKEN` 需要 `contents: write` 来创建 Release）。
+The app shells out to CLIs that must be on PATH at runtime (not build time): `opencode`, `bun` (runs the bridge), `git` (bridge auto-install/update). The bridge (`opencode-im-bridge`) is git-cloned on first launch into the configured install path.

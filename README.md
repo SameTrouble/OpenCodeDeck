@@ -21,7 +21,7 @@
 OpenCodeDeck 是一个基于 Tauri 2（React 19 + Vite + Rust）的桌面应用，启动并监管两个子进程：`opencode serve`（服务器）和 `opencode-im-bridge`（IM 桥接）。支持 macOS 与 Linux。
 
 ### 特性
-
+- **供应商管理** —— 配置opencode模型供应商
 - **多服务器管理** —— 支持配置多个 `opencode` 服务器实例，独立启动/停止，托盘菜单实时显示各进程状态。
 - **托盘集成** —— 关闭主窗口仅隐藏至托盘，通过托盘菜单退出时会先停止所有进程。
 - **微信二维码检测** —— 自动解析 bridge 输出中的微信登录二维码（ASCII 块或 URL 格式），在前端展示。
